@@ -38,8 +38,6 @@ export const cloudSyncService = {
       return null;
     }
 
-    // PROTECCIÓN CRÍTICA: si la lista local está vacía, NO subir.
-    // Un estado local vacío casi siempre es un error de carga, no una intención real de borrar todo.
     const localDesignaciones = localState?.designaciones || [];
     if (localDesignaciones.length === 0) {
       console.log('[CloudSync] Push cancelado: lista local vacía, se protege la nube.');
@@ -48,81 +46,16 @@ export const cloudSyncService = {
 
     pushInProgress = true;
     try {
-      // 1. Leer estado actual de la nube
-      let remoteData = null;
-      try {
-        const response = await axios.get(CLOUD_ENDPOINT, { timeout: 8000 });
-        if (response.data && response.data.data) {
-          remoteData = response.data.data;
-        }
-      } catch (e) {
-        console.warn('[CloudSync] No se pudo leer nube antes de push:', e?.message);
-      }
-
-      // 2. Merge designaciones por ID
-      //    Local tiene prioridad (es la acción que acaba de hacer el usuario)
-      //    Remote agrega los partidos de otros dispositivos que no están en local
-      const mergedMap = new Map();
-
-      // Primero la nube (base)
-      if (remoteData && Array.isArray(remoteData.designaciones)) {
-        remoteData.designaciones.forEach(d => {
-          if (d && d.id) mergedMap.set(String(d.id), d);
-        });
-      }
-
-      // Luego el local mergea de forma inteligente
-      localDesignaciones.forEach(d => {
-        if (d && d.id) {
-          const key = String(d.id);
-          const existing = mergedMap.get(key);
-          if (!existing) {
-            mergedMap.set(key, d);
-          } else {
-            // Si ambos existen, se conserva el que tenga la edición más reciente (updatedAt)
-            const localTime = d.updatedAt || 0;
-            const remoteTime = existing.updatedAt || 0;
-            if (localTime >= remoteTime) {
-              mergedMap.set(key, { ...existing, ...d });
-            } else {
-              mergedMap.set(key, { ...d, ...existing });
-            }
-          }
-        }
-      });
-
-      const mergedDesignaciones = Array.from(mergedMap.values());
-
-      // 3. Merge árbitros personalizados (unión)
-      const remoteArbitros = Array.isArray(remoteData?.customArbitros) ? remoteData.customArbitros : [];
-      const localArbitros = Array.isArray(localState?.customArbitros) ? localState.customArbitros : [];
-      const mergedArbitros = Array.from(new Set([...remoteArbitros, ...localArbitros])).filter(Boolean);
-
-      // 4. Merge municipios personalizados (unión)
-      const remoteMunicipios = Array.isArray(remoteData?.customMunicipios) ? remoteData.customMunicipios : [];
-      const localMunicipios = Array.isArray(localState?.customMunicipios) ? localState.customMunicipios : [];
-      const mergedMunicipios = Array.from(new Set([...remoteMunicipios, ...localMunicipios])).filter(Boolean);
-
-      // 5. Merge disponibilidades y pagos (local tiene prioridad)
-      const mergedDisponibilidades = {
-        ...(remoteData?.disponibilidades || {}),
-        ...(localState?.disponibilidades || {})
-      };
-      const mergedPagosState = {
-        ...(remoteData?.pagosState || {}),
-        ...(localState?.pagosState || {})
-      };
-
       const mergedPayload = {
-        designaciones: mergedDesignaciones,
-        customArbitros: mergedArbitros,
-        customMunicipios: mergedMunicipios,
-        disponibilidades: mergedDisponibilidades,
-        pagosState: mergedPagosState,
+        designaciones: localDesignaciones,
+        customArbitros: localState?.customArbitros || [],
+        customMunicipios: localState?.customMunicipios || [],
+        disponibilidades: localState?.disponibilidades || {},
+        pagosState: localState?.pagosState || {},
         updatedAt: new Date().toISOString()
       };
 
-      // 6. Subir a la nube
+      // Subir a la nube directamente (Reemplazo atómico limpio)
       await axios.put(CLOUD_ENDPOINT, {
         name: 'COARC_GLOBAL_DATABASE_2026_V1',
         data: mergedPayload
@@ -131,7 +64,7 @@ export const cloudSyncService = {
         timeout: 10000
       });
 
-      console.log(`[CloudSync] ✅ Push exitoso: ${mergedDesignaciones.length} partidos en la nube`);
+      console.log(`[CloudSync] ✅ Push exitoso: ${localDesignaciones.length} partidos en la nube`);
       return mergedPayload;
 
     } catch (error) {

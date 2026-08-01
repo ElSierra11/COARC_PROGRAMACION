@@ -109,67 +109,27 @@ export const DesignacionesProvider = ({ children }) => {
     const cloudData = await cloudSyncService.fetchCloudData();
     if (!cloudData) return; // Fallo de red: conservar estado local
 
-    // Merge bidireccional de designaciones:
-    // Mantiene los partidos locales que el usuario acaba de agregar/modificar en este dispositivo
-    // y fusiona los partidos que vienen de la nube (creados en otros dispositivos).
+    // 1. Sincronizar designaciones desde la nube hacia el almacenamiento local y el estado de la app
     if (Array.isArray(cloudData.designaciones)) {
-      const localList = readDesignacionesLocal();
-      const mergedMap = new Map();
-
-      // 1. Cargar designaciones de la nube
-      cloudData.designaciones.forEach(d => { if (d && d.id) mergedMap.set(String(d.id), d); });
-      
-      // 2. Fusionar con designaciones locales considerando updatedAt
-      localList.forEach(d => {
-        if (d && d.id) {
-          const key = String(d.id);
-          const existing = mergedMap.get(key);
-          if (!existing) {
-            mergedMap.set(key, d);
-          } else {
-            const localTime = d.updatedAt || 0;
-            const remoteTime = existing.updatedAt || 0;
-            if (localTime > remoteTime) {
-              mergedMap.set(key, d);
-            }
-          }
-        }
-      });
-
-      const mergedList = Array.from(mergedMap.values());
-      saveDesignacionesLocal(mergedList);
-
-      // Si local tenía datos nuevos/actualizados que no estaban en la nube, hacer un push automático
-      if (mergedList.length > cloudData.designaciones.length) {
-        pushToCloud(mergedList);
-      }
+      saveDesignacionesLocal(cloudData.designaciones);
     }
 
-    // Merge árbitros (unión)
-    if (Array.isArray(cloudData.customArbitros) && cloudData.customArbitros.length > 0) {
-      setCustomArbitros(prev => {
-        const union = Array.from(new Set([...prev, ...cloudData.customArbitros])).filter(Boolean);
-        try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(union)); } catch (e) {}
-        return union;
-      });
+    // 2. Sincronizar árbitros personalizados
+    if (Array.isArray(cloudData.customArbitros)) {
+      setCustomArbitros(cloudData.customArbitros);
+      try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(cloudData.customArbitros)); } catch (e) {}
     }
 
-    // Merge disponibilidades (nube + local)
+    // 3. Sincronizar disponibilidades
     if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
-      setDisponibilidades(prev => {
-        const merged = { ...cloudData.disponibilidades, ...prev };
-        try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(merged)); } catch (e) {}
-        return merged;
-      });
+      setDisponibilidades(cloudData.disponibilidades);
+      try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(cloudData.disponibilidades)); } catch (e) {}
     }
 
-    // Merge pagos (nube + local)
+    // 4. Sincronizar pagos
     if (cloudData.pagosState && typeof cloudData.pagosState === 'object') {
-      setPagosState(prev => {
-        const merged = { ...cloudData.pagosState, ...prev };
-        try { localStorage.setItem('coarc_pagos_state', JSON.stringify(merged)); } catch (e) {}
-        return merged;
-      });
+      setPagosState(cloudData.pagosState);
+      try { localStorage.setItem('coarc_pagos_state', JSON.stringify(cloudData.pagosState)); } catch (e) {}
     }
   };
 
