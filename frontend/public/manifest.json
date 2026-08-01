@@ -1,0 +1,44 @@
+{
+  "short_name": "COARC App",
+  "name": "Corporación Arbitral de Córdoba - Designaciones",
+  "description": "Aplicación Oficial para Gestión y Consulta de Designaciones Arbitrales - COARC Córdoba",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A1128",
+  "theme_color": "#0B2580",
+  "categories": ["sports", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Designaciones",
+      "short_name": "Partidos",
+      "description": "Ver lista de designaciones arbitrales",
+      "url": "/"
+    }
+  ]
+}

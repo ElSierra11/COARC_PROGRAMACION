@@ -1,0 +1,119 @@
+services:
+  # Database - PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: coarc-db
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      POSTGRES_DB: coarc_db
+      POSTGRES_USER: coarc_user
+      POSTGRES_PASSWORD: coarc_password_2026
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - coarc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coarc_user -d coarc_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Auth Service - FastAPI (Python)
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: coarc-auth-service
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://coarc_user:coarc_password_2026@db:5432/coarc_db
+      SECRET_KEY: coarc_super_secret_jwt_key_2026_arbitros_cordoba
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 1440
+    ports:
+      - "8001:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - coarc-network
+
+  # Arbitros Service - FastAPI (Python)
+  arbitros-service:
+    build:
+      context: ./services/arbitros-service
+      dockerfile: Dockerfile
+    container_name: coarc-arbitros-service
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://coarc_user:coarc_password_2026@db:5432/coarc_db
+      SECRET_KEY: coarc_super_secret_jwt_key_2026_arbitros_cordoba
+      ALGORITHM: HS256
+    ports:
+      - "8002:8002"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - coarc-network
+
+  # Designaciones Service - FastAPI (Python)
+  designaciones-service:
+    build:
+      context: ./services/designaciones-service
+      dockerfile: Dockerfile
+    container_name: coarc-designaciones-service
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://coarc_user:coarc_password_2026@db:5432/coarc_db
+      SECRET_KEY: coarc_super_secret_jwt_key_2026_arbitros_cordoba
+      ALGORITHM: HS256
+    ports:
+      - "8003:8003"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - coarc-network
+
+  # API Gateway - Nginx Proxy
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: coarc-gateway
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - auth-service
+      - arbitros-service
+      - designaciones-service
+    networks:
+      - coarc-network
+
+  # Frontend - React + Vite + Tailwind CSS PWA
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: coarc-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway
+    networks:
+      - coarc-network
+
+volumes:
+  postgres_data:
+
+networks:
+  coarc-network:
+    driver: bridge
