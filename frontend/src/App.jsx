@@ -69,7 +69,14 @@ function AppContent() {
   const [isAdminPanelModalOpen, setIsAdminPanelModalOpen] = useState(false);
   const [editingDesignacion, setEditingDesignacion] = useState(null);
 
-  const { isAdmin, isSuperAdmin, logout, user } = useAuth();
+  const { isAdmin, isSuperAdmin, logout, user, requireAuth } = useAuth();
+
+  const handleOpenNewModalProtected = () => {
+    requireAuth(
+      () => { setEditingDesignacion(null); setIsNewModalOpen(true); },
+      'Para programar un nuevo partido debes iniciar sesión con tus credenciales de Coordinador Arbitral.'
+    );
+  };
 
   const handleEditModal = (des) => {
     setEditingDesignacion(des);
@@ -86,7 +93,7 @@ function AppContent() {
       
       {/* Navbar Header */}
       <Navbar
-        onOpenNewModal={() => { setEditingDesignacion(null); setIsNewModalOpen(true); }}
+        onOpenNewModal={handleOpenNewModalProtected}
         onOpenStatsModal={() => setIsStatsModalOpen(true)}
         onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
         onOpenLoginModal={() => setIsLoginModalOpen(true)}
@@ -98,16 +105,14 @@ function AppContent() {
         <DesignacionesTable onEditModal={handleEditModal} />
       </main>
 
-      {/* Mobile Floating Action Button (FAB) for Admin */}
-      {isAdmin && (
-        <button
-          onClick={() => { setEditingDesignacion(null); setIsNewModalOpen(true); }}
-          className="md:hidden fixed right-4 bottom-20 z-40 bg-blue-700 hover:bg-blue-800 text-white p-4 rounded-full shadow-2xl flex items-center justify-center border-2 border-amber-400 active:scale-95 transition-transform"
-          aria-label="Programar Partido"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
-      )}
+      {/* Mobile Floating Action Button (FAB) */}
+      <button
+        onClick={handleOpenNewModalProtected}
+        className="md:hidden fixed right-4 bottom-20 z-40 bg-blue-700 hover:bg-blue-800 text-white p-4 rounded-full shadow-2xl flex items-center justify-center border-2 border-amber-400 active:scale-95 transition-transform cursor-pointer"
+        aria-label="Programar Partido"
+      >
+        <Plus className="w-6 h-6" />
+      </button>
 
       {/* Mobile Bottom Navigation Bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 py-2 pb-safe flex items-center justify-around text-[10px] font-bold text-slate-600 dark:text-slate-400 no-print shadow-lg">

@@ -27,7 +27,7 @@ export const Navbar = ({
   onOpenAdminModal
 }) => {
   const { theme, toggleTheme } = useTheme();
-  const { user, logout, isAdmin, isSuperAdmin } = useAuth();
+  const { user, logout, isAdmin, isSuperAdmin, requireAuth } = useAuth();
   const {
     selectedDateIso,
     setSelectedDateIso,
@@ -77,6 +77,13 @@ export const Navbar = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleOpenNewMatchProtected = () => {
+    requireAuth(
+      onOpenNewModal,
+      'Para programar un nuevo partido debes iniciar sesión con tus credenciales de Coordinador Arbitral.'
+    );
   };
 
   return (
@@ -130,16 +137,14 @@ export const Navbar = ({
             <span>Imprimir</span>
           </button>
 
-          {/* New Match Button (Admin) */}
-          {isAdmin && (
-            <button
-              onClick={onOpenNewModal}
-              className="bg-blue-700 hover:bg-blue-800 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all hover:shadow"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Programar Partido</span>
-            </button>
-          )}
+          {/* New Match Button */}
+          <button
+            onClick={handleOpenNewMatchProtected}
+            className="bg-blue-700 hover:bg-blue-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all hover:shadow active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Programar Partido</span>
+          </button>
 
           {/* Theme Toggle */}
           <button
@@ -167,7 +172,7 @@ export const Navbar = ({
             <button
               onClick={onOpenLoginModal}
               className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-2.5 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-all border border-slate-200 dark:border-slate-700"
-              title="Iniciar sesión como Administrador General (alejosierra656@gmail.com)"
+              title="Iniciar sesión como Administrador General"
             >
               <Lock className="w-3.5 h-3.5 text-amber-500" />
               <span>Ingresar Admin</span>
@@ -178,19 +183,21 @@ export const Navbar = ({
           <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-800 pl-2">
             <div className="flex flex-col text-right">
               <span className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
-                {user?.full_name || 'Coordinador Arbitral'}
+                {user?.full_name || 'Invitado (Lectura)'}
               </span>
               <span className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400 uppercase">
-                {user?.role || 'PROFE'}
+                {user?.role || 'COARC'}
               </span>
             </div>
-            <button
-              onClick={handleLogout}
-              className="p-2 text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-slate-800/80 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
-              title="Cerrar Sesión / Abrir Login"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            {user && (
+              <button
+                onClick={handleLogout}
+                className="p-2 text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-slate-800/80 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+                title="Cerrar Sesión"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -283,15 +290,16 @@ export const Navbar = ({
               <span>Imprimir Hoja</span>
             </button>
 
-            {isAdmin && (
-              <button
-                onClick={() => { onOpenNewModal(); setMobileMenuOpen(false); }}
-                className="p-3 bg-blue-700 text-white rounded-xl flex items-center gap-2 shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Nuevo Partido</span>
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                handleOpenNewMatchProtected();
+              }}
+              className="p-3 bg-blue-700 text-white rounded-xl flex items-center gap-2 shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Nuevo Partido</span>
+            </button>
           </div>
 
         </div>

@@ -3,14 +3,22 @@ import { useAuth } from '../context/AuthContext';
 import { Lock, User, Shield, X, AlertTriangle, CheckCircle2, Eye, EyeOff, Sparkles, Key } from 'lucide-react';
 
 export const LoginForm = ({ isOpen, onClose }) => {
-  const { login } = useAuth();
-  const [username, setUsername] = useState('alejosierra656@gmail.com');
-  const [password, setPassword] = useState('Alejandro10@');
+  const { login, authNoticeReason, isLoginModalRequested, clearAuthNotice } = useAuth();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (!isOpen) return null;
+  const activeIsOpen = isOpen || isLoginModalRequested;
+
+  if (!activeIsOpen) return null;
+
+  const handleCloseModal = () => {
+    clearAuthNotice();
+    onClose();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -18,8 +26,8 @@ export const LoginForm = ({ isOpen, onClose }) => {
     setLoading(true);
 
     try {
-      await login(username, password);
-      onClose();
+      await login(username, password, rememberMe);
+      handleCloseModal();
     } catch (err) {
       setError('Credenciales incorrectas. Verifique el usuario y la contraseña.');
     } finally {
@@ -46,7 +54,7 @@ export const LoginForm = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 p-6 text-white relative">
           <button
-            onClick={onClose}
+            onClick={handleCloseModal}
             className="absolute top-4 right-4 text-blue-200 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -62,6 +70,17 @@ export const LoginForm = ({ isOpen, onClose }) => {
             </div>
           </div>
         </div>
+
+        {/* Security Requirement Notice Banner if triggered by guest action */}
+        {authNoticeReason && (
+          <div className="m-4 mb-1 p-3.5 bg-amber-500/10 border border-amber-400/40 rounded-xl flex items-start gap-2 text-amber-800 dark:text-amber-200 text-xs shadow-sm">
+            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Acceso de Coordinación Requerido</p>
+              <p className="mt-0.5 text-[11px] leading-tight text-slate-600 dark:text-slate-300">{authNoticeReason}</p>
+            </div>
+          </div>
+        )}
 
         {/* Quick Role Fillers */}
         <div className="px-6 pt-4 grid grid-cols-2 gap-2">
@@ -112,7 +131,7 @@ export const LoginForm = ({ isOpen, onClose }) => {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="ej: alejosierra656@gmail.com"
+                placeholder="ej: admin o alejosierra656@gmail.com"
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800 dark:text-slate-200 transition"
               />
             </div>
@@ -141,6 +160,20 @@ export const LoginForm = ({ isOpen, onClose }) => {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+          </div>
+
+          {/* Option: Remember credentials */}
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              type="checkbox"
+              id="rememberMe"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 border-slate-300 cursor-pointer"
+            />
+            <label htmlFor="rememberMe" className="text-xs text-slate-600 dark:text-slate-300 font-medium cursor-pointer">
+              Recordar credenciales y mantener sesión activa
+            </label>
           </div>
 
           <div className="pt-2">

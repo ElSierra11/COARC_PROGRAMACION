@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { designacionesService, arbitrosService } from '../services/api';
+import { cloudSyncService } from '../services/cloudSyncService';
 
 const DesignacionesContext = createContext();
 
@@ -26,28 +27,6 @@ export const DesignacionesProvider = ({ children }) => {
     }
   });
 
-  const addCustomArbitros = (namesArray) => {
-    const cleanNames = namesArray
-      .map(n => n.trim().toUpperCase())
-      .filter(n => n.length > 0);
-
-    const updated = Array.from(new Set([...customArbitros, ...cleanNames]));
-    setCustomArbitros(updated);
-    try {
-      localStorage.setItem('coarc_custom_arbitros', JSON.stringify(updated));
-    } catch (e) {}
-  };
-
-  const removeCustomArbitro = (name) => {
-    if (!name) return;
-    const clean = name.trim().toUpperCase();
-    const updated = customArbitros.filter(n => n.toUpperCase() !== clean);
-    setCustomArbitros(updated);
-    try {
-      localStorage.setItem('coarc_custom_arbitros', JSON.stringify(updated));
-    } catch (e) {}
-  };
-
   // Estado de liquidaciones y pagos de honorarios por partido y por árbitro
   const [pagosState, setPagosState] = useState(() => {
     try {
@@ -58,31 +37,15 @@ export const DesignacionesProvider = ({ children }) => {
     }
   });
 
-  const togglePagoArbitro = (designacionId, arbitroNombre) => {
-    if (!designacionId || !arbitroNombre) return;
-    const key = `${designacionId}_${arbitroNombre.trim().toUpperCase()}`;
-    const updated = {
-      ...pagosState,
-      [key]: !pagosState[key]
-    };
-    setPagosState(updated);
+  // Estado de disponibilidad de árbitros por fecha
+  const [disponibilidades, setDisponibilidades] = useState(() => {
     try {
-      localStorage.setItem('coarc_pagos_state', JSON.stringify(updated));
-    } catch (e) {}
-  };
-
-  const setPagoArbitroStatus = (designacionId, arbitroNombre, isPaid) => {
-    if (!designacionId || !arbitroNombre) return;
-    const key = `${designacionId}_${arbitroNombre.trim().toUpperCase()}`;
-    const updated = {
-      ...pagosState,
-      [key]: isPaid
-    };
-    setPagosState(updated);
-    try {
-      localStorage.setItem('coarc_pagos_state', JSON.stringify(updated));
-    } catch (e) {}
-  };
+      const saved = localStorage.getItem('coarc_disponibilidades');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
 
   const [arbitros, setArbitros] = useState([]);
   const [arbitroStats, setArbitroStats] = useState([]);
@@ -101,6 +64,70 @@ export const DesignacionesProvider = ({ children }) => {
     }
   };
 
+  // Enviar estado actual a la nube en segundo plano
+  const pushToCloud = useCallback((overrideState = {}) => {
+    const stateToPush = {
+      designaciones,
+      customArbitros,
+      disponibilidades,
+      pagosState,
+      ...overrideState
+    };
+    cloudSyncService.pushCloudData(stateToPush);
+  }, [designaciones, customArbitros, disponibilidades, pagosState]);
+
+  const addCustomArbitros = (namesArray) => {
+    const cleanNames = namesArray
+      .map(n => n.trim().toUpperCase())
+      .filter(n => n.length > 0);
+
+    const updated = Array.from(new Set([...customArbitros, ...cleanNames]));
+    setCustomArbitros(updated);
+    try {
+      localStorage.setItem('coarc_custom_arbitros', JSON.stringify(updated));
+    } catch (e) {}
+    pushToCloud({ customArbitros: updated });
+  };
+
+  const removeCustomArbitro = (name) => {
+    if (!name) return;
+    const clean = name.trim().toUpperCase();
+    const updated = customArbitros.filter(n => n.toUpperCase() !== clean);
+    setCustomArbitros(updated);
+    try {
+      localStorage.setItem('coarc_custom_arbitros', JSON.stringify(updated));
+    } catch (e) {}
+    pushToCloud({ customArbitros: updated });
+  };
+
+  const togglePagoArbitro = (designacionId, arbitroNombre) => {
+    if (!designacionId || !arbitroNombre) return;
+    const key = `${designacionId}_${arbitroNombre.trim().toUpperCase()}`;
+    const updated = {
+      ...pagosState,
+      [key]: !pagosState[key]
+    };
+    setPagosState(updated);
+    try {
+      localStorage.setItem('coarc_pagos_state', JSON.stringify(updated));
+    } catch (e) {}
+    pushToCloud({ pagosState: updated });
+  };
+
+  const setPagoArbitroStatus = (designacionId, arbitroNombre, isPaid) => {
+    if (!designacionId || !arbitroNombre) return;
+    const key = `${designacionId}_${arbitroNombre.trim().toUpperCase()}`;
+    const updated = {
+      ...pagosState,
+      [key]: isPaid
+    };
+    setPagosState(updated);
+    try {
+      localStorage.setItem('coarc_pagos_state', JSON.stringify(updated));
+    } catch (e) {}
+    pushToCloud({ pagosState: updated });
+  };
+
   const fetchArbitros = async () => {
     try {
       const data = await arbitrosService.getArbitros();
@@ -110,9 +137,6 @@ export const DesignacionesProvider = ({ children }) => {
     }
   };
 
-  // Auto-registra (upsert) el árbitro en el sistema al ser asignado en una designación.
-  // Si ya existe, lo sobreescribe/actualiza; si es nuevo, lo crea.
-  // NO llama fetchArbitros internamente — el llamador lo hace una sola vez al terminar.
   const autoRegisterArbitro = async (nombre) => {
     if (!nombre) return;
     const clean = nombre.trim().toUpperCase();
@@ -124,9 +148,58 @@ export const DesignacionesProvider = ({ children }) => {
     }
   };
 
+  // Carga y fusiona datos de la Nube (Cloud Sync)
+  const fetchCloudSyncData = async () => {
+    const cloudData = await cloudSyncService.fetchCloudData();
+    if (cloudData) {
+      if (Array.isArray(cloudData.designaciones)) {
+        let localSaved = [];
+        try {
+          const raw = localStorage.getItem('coarc_saved_designaciones');
+          localSaved = raw ? JSON.parse(raw) : [];
+        } catch (e) {}
+
+        const mergedMap = new Map();
+        cloudData.designaciones.forEach(d => { if (d && d.id) mergedMap.set(d.id, d); });
+        localSaved.forEach(d => { if (d && d.id && !mergedMap.has(d.id)) mergedMap.set(d.id, d); });
+
+        const mergedList = Array.from(mergedMap.values());
+        saveToLocal(mergedList);
+      }
+
+      if (Array.isArray(cloudData.customArbitros) && cloudData.customArbitros.length > 0) {
+        setCustomArbitros(prev => {
+          const union = Array.from(new Set([...prev, ...cloudData.customArbitros]));
+          try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(union)); } catch (e) {}
+          return union;
+        });
+      }
+
+      if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
+        setDisponibilidades(prev => {
+          const merged = { ...prev, ...cloudData.disponibilidades };
+          try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(merged)); } catch (e) {}
+          return merged;
+        });
+      }
+
+      if (cloudData.pagosState && typeof cloudData.pagosState === 'object') {
+        setPagosState(prev => {
+          const merged = { ...prev, ...cloudData.pagosState };
+          try { localStorage.setItem('coarc_pagos_state', JSON.stringify(merged)); } catch (e) {}
+          return merged;
+        });
+      }
+    }
+  };
+
   const fetchDesignaciones = async () => {
     setLoading(true);
     try {
+      // 1. Sincronización en tiempo real desde la Nube
+      await fetchCloudSyncData();
+
+      // 2. Intentar backend API local en caso de que esté activo
       const params = { fecha_iso: selectedDateIso };
       if (selectedCancha) params.cancha = selectedCancha;
       if (selectedTorneo) params.torneo = selectedTorneo;
@@ -134,36 +207,26 @@ export const DesignacionesProvider = ({ children }) => {
 
       const data = await designacionesService.getDesignaciones(params);
       if (data && data.length > 0) {
-        // Merge server data with local user additions if any
-        let localItems = [];
+        let localSaved = [];
         try {
-          const localSaved = localStorage.getItem('coarc_saved_designaciones');
-          localItems = localSaved ? JSON.parse(localSaved) : [];
-        } catch (e) {
-          localItems = [];
-        }
+          const raw = localStorage.getItem('coarc_saved_designaciones');
+          localSaved = raw ? JSON.parse(raw) : [];
+        } catch (e) {}
         
         const mergedMap = new Map();
         data.forEach(d => mergedMap.set(d.id, d));
-        localItems.forEach(d => {
+        localSaved.forEach(d => {
           if (d && d.id && !mergedMap.has(d.id)) mergedMap.set(d.id, d);
         });
 
         const mergedList = Array.from(mergedMap.values());
         saveToLocal(mergedList);
-      } else {
-        try {
-          const localSaved = localStorage.getItem('coarc_saved_designaciones');
-          if (!localSaved) {
-            saveToLocal([]);
-          }
-        } catch (e) {}
       }
 
       const stats = await designacionesService.getArbitrosStats(selectedDateIso);
       setArbitroStats(stats);
     } catch (err) {
-      console.warn("Backend API offline/restarting, usando datos guardados localmente:", err);
+      console.warn("Uso primario de sincronización Cloud:", err);
     } finally {
       setLoading(false);
     }
@@ -171,54 +234,60 @@ export const DesignacionesProvider = ({ children }) => {
 
   useEffect(() => {
     fetchArbitros();
+    fetchCloudSyncData();
+
+    // Sincronización periódica cada 8 segundos y al enfocar ventana
+    const intervalId = setInterval(() => {
+      fetchCloudSyncData();
+    }, 8000);
+
+    const handleFocus = () => {
+      fetchCloudSyncData();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   useEffect(() => {
     fetchDesignaciones();
   }, [selectedDateIso, selectedCancha, selectedTorneo, searchQuery]);
 
-  // Guarda localmente de forma INSTANTÁNEA y sincroniza con el backend en segundo plano
   const addDesignacion = (data) => {
     const newDes = { ...data, id: Date.now(), item: designaciones.length + 1 };
     const updated = [...designaciones, newDes];
     saveToLocal(updated);
-    // Sync con backend en background — no bloquea la UI
+    pushToCloud({ designaciones: updated });
+
     designacionesService.createDesignacion(data).catch(err =>
-      console.warn("Guardado localmente. Se sincronizará con el backend al reconectar.", err)
+      console.warn("Guardado localmente. Sincronizado con Cloud Store.", err)
     );
     return newDes;
   };
 
-  // Actualiza localmente de forma INSTANTÁNEA y sincroniza con el backend en segundo plano
   const updateDesignacion = (id, data) => {
     const updated = designaciones.map(d => d.id === id ? { ...d, ...data } : d);
     saveToLocal(updated);
-    // Sync con backend en background — no bloquea la UI
+    pushToCloud({ designaciones: updated });
+
     designacionesService.updateDesignacion(id, data).catch(err =>
-      console.warn("Actualizado localmente.", err)
+      console.warn("Actualizado en Cloud Store.", err)
     );
     return { ...data, id };
   };
 
-  // Elimina localmente de forma INSTANTÁNEA y sincroniza con el backend en segundo plano
   const deleteDesignacion = (id) => {
     const updated = designaciones.filter(d => d.id !== id);
     saveToLocal(updated);
-    // Sync con backend en background — no bloquea la UI
+    pushToCloud({ designaciones: updated });
+
     designacionesService.deleteDesignacion(id).catch(err =>
-      console.warn("Eliminado localmente.", err)
+      console.warn("Eliminado en Cloud Store.", err)
     );
   };
-
-  // Estado de disponibilidad de árbitros por fecha
-  const [disponibilidades, setDisponibilidades] = useState(() => {
-    try {
-      const saved = localStorage.getItem('coarc_disponibilidades');
-      return saved ? JSON.parse(saved) : {};
-    } catch (e) {
-      return {};
-    }
-  });
 
   const updateDisponibilidad = (fechaIso, arbitroNombre, estado, nota = '') => {
     if (!fechaIso || !arbitroNombre) return;
@@ -233,6 +302,7 @@ export const DesignacionesProvider = ({ children }) => {
       try {
         localStorage.setItem('coarc_disponibilidades', JSON.stringify(newDisp));
       } catch (e) {}
+      pushToCloud({ disponibilidades: newDisp });
       return newDisp;
     });
   };

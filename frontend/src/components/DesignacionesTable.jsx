@@ -53,7 +53,7 @@ export const DesignacionesTable = ({ onEditModal }) => {
   const [isDisponibilidadModalOpen, setIsDisponibilidadModalOpen] = useState(false);
   const [isHonorariosModalOpen, setIsHonorariosModalOpen] = useState(false);
 
-  const { isAdmin } = useAuth();
+  const { isAdmin, requireAuth } = useAuth();
 
   const safeDesignaciones = Array.isArray(designaciones) ? designaciones : [];
 
@@ -86,10 +86,12 @@ export const DesignacionesTable = ({ onEditModal }) => {
   });
 
   const toggleMatchStatus = async (des) => {
-    const states = ['PROGRAMADO', 'CONFIRMADO', 'EN_JUEGO', 'FINALIZADO'];
-    const currentIdx = states.indexOf(des.estado || 'PROGRAMADO');
-    const nextState = states[(currentIdx + 1) % states.length];
-    await updateDesignacion(des.id, { estado: nextState });
+    requireAuth(async () => {
+      const states = ['PROGRAMADO', 'CONFIRMADO', 'EN_JUEGO', 'FINALIZADO'];
+      const currentIdx = states.indexOf(des.estado || 'PROGRAMADO');
+      const nextState = states[(currentIdx + 1) % states.length];
+      await updateDesignacion(des.id, { estado: nextState });
+    }, 'Debes iniciar sesión como Coordinador Arbitral para cambiar el estado del partido.');
   };
 
   // Lista dinámica de municipios (Predeterminados + Creados en partidos + Agregados manualmente)
@@ -112,16 +114,18 @@ export const DesignacionesTable = ({ onEditModal }) => {
   ).filter(Boolean);
 
   const handleAddMunicipio = () => {
-    const newMun = prompt("Ingresa el nombre del nuevo Municipio / Ciudad (ej: Chinú, San Pelayo, Montelíbano, Ciénaga de Oro):");
-    if (newMun && newMun.trim()) {
-      const clean = newMun.trim().toUpperCase();
-      if (!customMunicipios.includes(clean)) {
-        const updated = [...customMunicipios, clean];
-        setCustomMunicipios(updated);
-        localStorage.setItem('coarc_custom_municipios', JSON.stringify(updated));
+    requireAuth(() => {
+      const newMun = prompt("Ingresa el nombre del nuevo Municipio / Ciudad (ej: Chinú, San Pelayo, Montelíbano, Ciénaga de Oro):");
+      if (newMun && newMun.trim()) {
+        const clean = newMun.trim().toUpperCase();
+        if (!customMunicipios.includes(clean)) {
+          const updated = [...customMunicipios, clean];
+          setCustomMunicipios(updated);
+          localStorage.setItem('coarc_custom_municipios', JSON.stringify(updated));
+        }
+        setSelectedMunicipio(clean);
       }
-      setSelectedMunicipio(clean);
-    }
+    }, 'Para registrar nuevos municipios debes iniciar sesión con tus credenciales de Coordinador.');
   };
 
   // Extract unique venues and tournaments for quick dropdown filters
@@ -192,16 +196,14 @@ export const DesignacionesTable = ({ onEditModal }) => {
         })}
 
         {/* Button to Add New Custom Municipality */}
-        {isAdmin && (
-          <button
-            onClick={handleAddMunicipio}
-            className="px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white transition-all whitespace-nowrap flex items-center gap-1 shadow-sm ml-auto"
-            title="Agregar Nuevo Municipio"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>+ Agregar Municipio</span>
-          </button>
-        )}
+        <button
+          onClick={handleAddMunicipio}
+          className="px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white transition-all whitespace-nowrap flex items-center gap-1 shadow-sm ml-auto cursor-pointer"
+          title="Agregar Nuevo Municipio"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>+ Agregar Municipio</span>
+        </button>
       </div>
 
       {/* Search & Filter Controls */}
@@ -210,36 +212,41 @@ export const DesignacionesTable = ({ onEditModal }) => {
         {/* Advanced Scheduling Tools Bar */}
         <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex flex-wrap items-center gap-2">
-            {isAdmin && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setIsImportModalOpen(true)}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>Carga Rápida / Duplicar Jornada</span>
-                </button>
+            <button
+              type="button"
+              onClick={() => requireAuth(
+                () => setIsImportModalOpen(true),
+                'Debes iniciar sesión con las credenciales de Coordinador Arbitral para usar Carga Rápida o Duplicar Jornada.'
+              )}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Carga Rápida / Duplicar Jornada</span>
+            </button>
 
-                <button
-                  type="button"
-                  onClick={() => setIsDisponibilidadModalOpen(true)}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5"
-                >
-                  <UserCheck2 className="w-4 h-4" />
-                  <span>Disponibilidad Árbitros</span>
-                </button>
+            <button
+              type="button"
+              onClick={() => requireAuth(
+                () => setIsDisponibilidadModalOpen(true),
+                'Debes iniciar sesión con las credenciales de Coordinador para gestionar la Disponibilidad de Árbitros.'
+              )}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <UserCheck2 className="w-4 h-4" />
+              <span>Disponibilidad Árbitros</span>
+            </button>
 
-                <button
-                  type="button"
-                  onClick={() => setIsHonorariosModalOpen(true)}
-                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 border border-amber-300"
-                >
-                  <DollarSign className="w-4 h-4 text-slate-950" />
-                  <span>Tesorería / Honorarios</span>
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              onClick={() => requireAuth(
+                () => setIsHonorariosModalOpen(true),
+                'Debes iniciar sesión con las credenciales de Coordinador o Administrador para gestionar Tesorería y Honorarios.'
+              )}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 border border-amber-300 cursor-pointer"
+            >
+              <DollarSign className="w-4 h-4 text-slate-950" />
+              <span>Tesorería / Honorarios</span>
+            </button>
           </div>
 
           {/* View Switcher: Table vs Grid */}
@@ -545,32 +552,39 @@ export const DesignacionesTable = ({ onEditModal }) => {
                       )}
                     </div>
 
-                    {/* Admin Actions Footer */}
-                    {isAdmin && (
-                      <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800 text-xs">
-                        <button
-                          onClick={() => onEditModal({ ...des, id: null, item: (des.item || 0) + 1 })}
-                          className="px-2.5 py-1.5 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold rounded-lg flex items-center gap-1"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Clonar</span>
-                        </button>
-                        <button
-                          onClick={() => onEditModal(des)}
-                          className="px-2.5 py-1.5 bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-300 font-bold rounded-lg flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          <span>Editar</span>
-                        </button>
-                        <button
-                          onClick={() => deleteDesignacion(des.id)}
-                          className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-bold rounded-lg flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Eliminar</span>
-                        </button>
-                      </div>
-                    )}
+                    {/* Match Actions Footer */}
+                    <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                      <button
+                        onClick={() => requireAuth(
+                          () => onEditModal({ ...des, id: null, item: (des.item || 0) + 1 }),
+                          'Debes iniciar sesión con tus credenciales de Coordinador para clonar este partido.'
+                        )}
+                        className="px-2.5 py-1.5 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Clonar</span>
+                      </button>
+                      <button
+                        onClick={() => requireAuth(
+                          () => onEditModal(des),
+                          'Debes iniciar sesión con tus credenciales de Coordinador Arbitral para editar este partido.'
+                        )}
+                        className="px-2.5 py-1.5 bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-300 font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>Editar</span>
+                      </button>
+                      <button
+                        onClick={() => requireAuth(
+                          () => deleteDesignacion(des.id),
+                          'Debes iniciar sesión con tus credenciales de Coordinador Arbitral para eliminar este partido.'
+                        )}
+                        className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Eliminar</span>
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -591,7 +605,7 @@ export const DesignacionesTable = ({ onEditModal }) => {
                     <th className="py-2.5 px-3 min-w-[150px]">TORNEO / PARTIDO</th>
                     <th className="py-2.5 px-3 w-28">CATEGORIA</th>
                     <th className="py-2.5 px-3 w-28">ESTADO</th>
-                    {isAdmin && <th className="py-2.5 px-3 w-24 text-center no-print">ACCIONES</th>}
+                    <th className="py-2.5 px-3 w-24 text-center no-print">ACCIONES</th>
                   </tr>
                 </thead>
 
@@ -760,33 +774,40 @@ export const DesignacionesTable = ({ onEditModal }) => {
                         </td>
 
                         {/* ACCIONES */}
-                        {isAdmin && (
-                          <td className="py-3 px-3 text-center no-print">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => onEditModal({ ...des, id: null, item: (des.item || 0) + 1 })}
-                                className="p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-slate-800 rounded transition-colors"
-                                title="Duplicar Partido (Clonar)"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => onEditModal(des)}
-                                className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-slate-800 rounded transition-colors"
-                                title="Editar Designación"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => deleteDesignacion(des.id)}
-                                className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-slate-800 rounded transition-colors"
-                                title="Eliminar Designación"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        )}
+                        <td className="py-3 px-3 text-center no-print">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => requireAuth(
+                                () => onEditModal({ ...des, id: null, item: (des.item || 0) + 1 }),
+                                'Debes iniciar sesión con tus credenciales de Coordinador para clonar este partido.'
+                              )}
+                              className="p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                              title="Duplicar Partido (Clonar)"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => requireAuth(
+                                () => onEditModal(des),
+                                'Debes iniciar sesión con tus credenciales de Coordinador Arbitral para editar este partido.'
+                              )}
+                              className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                              title="Editar Designación"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => requireAuth(
+                                () => deleteDesignacion(des.id),
+                                'Debes iniciar sesión con tus credenciales de Coordinador Arbitral para eliminar este partido.'
+                              )}
+                              className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                              title="Eliminar Designación"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
