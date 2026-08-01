@@ -109,18 +109,40 @@ export const DesignacionesProvider = ({ children }) => {
     const cloudData = await cloudSyncService.fetchCloudData();
     if (!cloudData) return; // Fallo de red: conservar estado local
 
-    // Merge designaciones: local como base, nube sobreescribe
+    // Merge bidireccional de designaciones:
+    // Mantiene los partidos locales que el usuario acaba de agregar/modificar en este dispositivo
+    // y fusiona los partidos que vienen de la nube (creados en otros dispositivos).
     if (Array.isArray(cloudData.designaciones)) {
       const localList = readDesignacionesLocal();
       const mergedMap = new Map();
 
-      // Base: local
-      localList.forEach(d => { if (d && d.id) mergedMap.set(String(d.id), d); });
-      // Sobreescribir con nube (partidos de otros dispositivos aparecen aquí)
+      // 1. Cargar designaciones de la nube
       cloudData.designaciones.forEach(d => { if (d && d.id) mergedMap.set(String(d.id), d); });
+      
+      // 2. Fusionar con designaciones locales considerando updatedAt
+      localList.forEach(d => {
+        if (d && d.id) {
+          const key = String(d.id);
+          const existing = mergedMap.get(key);
+          if (!existing) {
+            mergedMap.set(key, d);
+          } else {
+            const localTime = d.updatedAt || 0;
+            const remoteTime = existing.updatedAt || 0;
+            if (localTime > remoteTime) {
+              mergedMap.set(key, d);
+            }
+          }
+        }
+      });
 
       const mergedList = Array.from(mergedMap.values());
       saveDesignacionesLocal(mergedList);
+
+      // Si local tenía datos nuevos/actualizados que no estaban en la nube, hacer un push automático
+      if (mergedList.length > cloudData.designaciones.length) {
+        pushToCloud(mergedList);
+      }
     }
 
     // Merge árbitros (unión)
@@ -132,19 +154,19 @@ export const DesignacionesProvider = ({ children }) => {
       });
     }
 
-    // Merge disponibilidades (nube sobreescribe)
+    // Merge disponibilidades (nube + local)
     if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
       setDisponibilidades(prev => {
-        const merged = { ...prev, ...cloudData.disponibilidades };
+        const merged = { ...cloudData.disponibilidades, ...prev };
         try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(merged)); } catch (e) {}
         return merged;
       });
     }
 
-    // Merge pagos (nube sobreescribe)
+    // Merge pagos (nube + local)
     if (cloudData.pagosState && typeof cloudData.pagosState === 'object') {
       setPagosState(prev => {
-        const merged = { ...prev, ...cloudData.pagosState };
+        const merged = { ...cloudData.pagosState, ...prev };
         try { localStorage.setItem('coarc_pagos_state', JSON.stringify(merged)); } catch (e) {}
         return merged;
       });
@@ -229,7 +251,7 @@ export const DesignacionesProvider = ({ children }) => {
   // ────────────────────────────────────────────────────────────────────
   const addDesignacion = (data) => {
     const current = readDesignacionesLocal(); // Leer SIEMPRE del storage (más fresco que estado React)
-    const newDes = { ...data, id: Date.now(), item: current.length + 1 };
+    const newDes = { ...data, id: Date.now(), item: current.length + 1, updatedAt: Date.now() };
     const updated = [...current, newDes];
     saveDesignacionesLocal(updated);
     pushToCloud(updated); // Subir la lista completa actualizada
@@ -239,7 +261,7 @@ export const DesignacionesProvider = ({ children }) => {
 
   const updateDesignacion = (id, data) => {
     const current = readDesignacionesLocal();
-    const updated = current.map(d => d.id === id ? { ...d, ...data } : d);
+    const updated = current.map(d => d.id === id ? { ...d, ...data, updatedAt: Date.now() } : d);
     saveDesignacionesLocal(updated);
     pushToCloud(updated);
     designacionesService.updateDesignacion(id, data).catch(() => {});

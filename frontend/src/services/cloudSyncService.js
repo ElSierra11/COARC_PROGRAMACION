@@ -71,9 +71,24 @@ export const cloudSyncService = {
         });
       }
 
-      // Luego el local sobreescribe/agrega (tiene prioridad)
+      // Luego el local mergea de forma inteligente
       localDesignaciones.forEach(d => {
-        if (d && d.id) mergedMap.set(String(d.id), d);
+        if (d && d.id) {
+          const key = String(d.id);
+          const existing = mergedMap.get(key);
+          if (!existing) {
+            mergedMap.set(key, d);
+          } else {
+            // Si ambos existen, se conserva el que tenga la edición más reciente (updatedAt)
+            const localTime = d.updatedAt || 0;
+            const remoteTime = existing.updatedAt || 0;
+            if (localTime >= remoteTime) {
+              mergedMap.set(key, { ...existing, ...d });
+            } else {
+              mergedMap.set(key, { ...d, ...existing });
+            }
+          }
+        }
       });
 
       const mergedDesignaciones = Array.from(mergedMap.values());
