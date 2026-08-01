@@ -202,7 +202,14 @@ export const Navbar = ({
         </div>
 
         {/* Mobile Header Right Controls */}
-        <div className="flex md:hidden items-center gap-2">
+        <div className="flex md:hidden items-center gap-1.5">
+          {/* User Badge if Logged In */}
+          {user && (
+            <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-xs">
+              {user.role === 'ADMIN' ? 'ADMIN' : 'PROFE'}
+            </span>
+          )}
+
           {/* Quick Date Trigger Badge (Mobile) */}
           <div className="relative flex items-center gap-1 bg-blue-50 dark:bg-slate-800 px-2 py-1 rounded-lg border border-blue-100 dark:border-slate-700 text-[11px] font-bold text-blue-900 dark:text-blue-200">
             <Calendar className="w-3.5 h-3.5 text-blue-600" />

@@ -10,7 +10,7 @@ import { WhatsAppExportModal } from './components/WhatsAppExportModal';
 import { LoginForm } from './components/LoginForm';
 import { OfficialCoarcPrintSheet } from './components/OfficialCoarcPrintSheet';
 import { AdminPanelModal } from './components/AdminPanelModal';
-import { Shield, RefreshCw, Plus, Calendar, Activity, Share2, Printer, Lock } from 'lucide-react';
+import { Shield, RefreshCw, Plus, Calendar, Activity, Share2, Printer, Lock, LogOut } from 'lucide-react';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -149,11 +149,17 @@ function AppContent() {
         </button>
 
         <button
-          onClick={isSuperAdmin ? logout : () => setIsLoginModalOpen(true)}
-          className="flex flex-col items-center gap-1 p-1 text-amber-600 dark:text-amber-400"
+          onClick={isAdmin ? logout : () => setIsLoginModalOpen(true)}
+          className={`flex flex-col items-center gap-1 p-1 transition-colors ${
+            isAdmin ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-amber-600 dark:text-amber-400'
+          }`}
         >
-          <Lock className="w-5 h-5 text-amber-500" />
-          <span>{isSuperAdmin ? 'Salir Admin' : 'Ingresar'}</span>
+          {isAdmin ? (
+            <LogOut className="w-5 h-5 text-emerald-500" />
+          ) : (
+            <Lock className="w-5 h-5 text-amber-500" />
+          )}
+          <span>{isSuperAdmin ? 'Salir Admin' : isAdmin ? 'Salir Profe' : 'Ingresar'}</span>
         </button>
       </nav>
 

@@ -99,43 +99,78 @@ export const DesignacionesProvider = ({ children }) => {
     });
   };
 
-  // ────────────────────────────────────────────────────────────────────
-  // FETCH DESDE LA NUBE
-  // La nube ES la fuente de verdad. Al traer datos, se mergan con los
-  // locales (por si el usuario hizo algo offline). La nube siempre gana
-  // en caso de conflicto de ID.
-  // ────────────────────────────────────────────────────────────────────
-  const pullFromCloud = async () => {
-    const cloudData = await cloudSyncService.fetchCloudData();
-    if (!cloudData) return; // Fallo de red: conservar estado local
+  // Helper para fusionar listas de partidos sin perder ninguno
+  const mergeDesignaciones = (localArr = [], cloudArr = []) => {
+    const map = new Map();
 
-    // 1. Sincronizar designaciones desde la nube hacia el almacenamiento local y el estado de la app
-    if (Array.isArray(cloudData.designaciones)) {
-      saveDesignacionesLocal(cloudData.designaciones);
-    }
+    localArr.forEach(item => {
+      if (item && item.id) {
+        map.set(String(item.id), item);
+      }
+    });
 
-    // 2. Sincronizar árbitros personalizados
-    if (Array.isArray(cloudData.customArbitros)) {
-      setCustomArbitros(cloudData.customArbitros);
-      try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(cloudData.customArbitros)); } catch (e) {}
-    }
+    cloudArr.forEach(item => {
+      if (item && item.id) {
+        const key = String(item.id);
+        const existing = map.get(key);
+        if (!existing) {
+          map.set(key, item);
+        } else {
+          const existingTime = existing.updatedAt || 0;
+          const cloudTime = item.updatedAt || 0;
+          if (cloudTime >= existingTime) {
+            map.set(key, item);
+          }
+        }
+      }
+    });
 
-    // 3. Sincronizar disponibilidades
-    if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
-      setDisponibilidades(cloudData.disponibilidades);
-      try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(cloudData.disponibilidades)); } catch (e) {}
-    }
-
-    // 4. Sincronizar pagos
-    if (cloudData.pagosState && typeof cloudData.pagosState === 'object') {
-      setPagosState(cloudData.pagosState);
-      try { localStorage.setItem('coarc_pagos_state', JSON.stringify(cloudData.pagosState)); } catch (e) {}
-    }
+    const merged = Array.from(map.values());
+    merged.sort((a, b) => (a.item || 0) - (b.item || 0) || (a.id || 0) - (b.id || 0));
+    return merged;
   };
 
   // ────────────────────────────────────────────────────────────────────
-  // Árbitros del backend
+  // FETCH Y MERGE DESDE LA NUBE
   // ────────────────────────────────────────────────────────────────────
+  const pullFromCloud = async () => {
+    const cloudData = await cloudSyncService.fetchCloudData();
+    if (!cloudData) return; // Si falla la red, conserva el estado local sin romper nada
+
+    const localList = readDesignacionesLocal();
+
+    if (Array.isArray(cloudData.designaciones)) {
+      const mergedList = mergeDesignaciones(localList, cloudData.designaciones);
+      if (JSON.stringify(mergedList) !== JSON.stringify(localList)) {
+        saveDesignacionesLocal(mergedList);
+      }
+    }
+
+    if (Array.isArray(cloudData.customArbitros) && cloudData.customArbitros.length > 0) {
+      setCustomArbitros(prev => {
+        const union = Array.from(new Set([...prev, ...cloudData.customArbitros]));
+        try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(union)); } catch (e) {}
+        return union;
+      });
+    }
+
+    if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
+      setDisponibilidades(prev => {
+        const merged = { ...prev, ...cloudData.disponibilidades };
+        try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(merged)); } catch (e) {}
+        return merged;
+      });
+    }
+
+    if (cloudData.pagosState && typeof cloudData.pagosState === 'object') {
+      setPagosState(prev => {
+        const merged = { ...prev, ...cloudData.pagosState };
+        try { localStorage.setItem('coarc_pagos_state', JSON.stringify(merged)); } catch (e) {}
+        return merged;
+      });
+    }
+  };
+
   const fetchArbitros = async () => {
     try {
       const data = await arbitrosService.getArbitros();
@@ -150,48 +185,61 @@ export const DesignacionesProvider = ({ children }) => {
   };
 
   // ────────────────────────────────────────────────────────────────────
-  // Carga inicial y polling
+  // Carga inicial, polling y sincronización en tiempo real entre pestañas
   // ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchArbitros();
 
-    // Carga inicial: traer datos de la nube y, si la nube está vacía
-    // pero local tiene datos, subir los locales (recuperar estado)
     const initialSync = async () => {
       const cloudData = await cloudSyncService.fetchCloudData();
-      const cloudEmpty = !cloudData || !Array.isArray(cloudData.designaciones) || cloudData.designaciones.length === 0;
       const localList = readDesignacionesLocal();
 
-      if (cloudEmpty && localList.length > 0) {
-        // La nube está vacía pero tenemos datos locales → subirlos
-        console.log(`[CloudSync] Nube vacía, subiendo ${localList.length} partidos locales...`);
-        cloudSyncService.pushCloudData({
-          designaciones: localList,
-          customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
-          disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
-          pagosState: JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}')
-        });
-      } else if (!cloudEmpty) {
-        // La nube tiene datos → traerlos y mergear
-        await pullFromCloud();
+      if (cloudData !== null) {
+        const cloudList = Array.isArray(cloudData.designaciones) ? cloudData.designaciones : [];
+        const merged = mergeDesignaciones(localList, cloudList);
+
+        saveDesignacionesLocal(merged);
+
+        if (merged.length > cloudList.length) {
+          console.log(`[CloudSync] Subiendo ${merged.length} partidos combinados a la nube...`);
+          cloudSyncService.pushCloudData({
+            designaciones: merged,
+            customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
+            disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
+            pagosState: JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}')
+          });
+        }
+      } else {
+        console.warn('[CloudSync] No se pudo conectar a la nube en el inicio. Conservando datos locales.');
       }
     };
 
     initialSync();
 
-    // Polling cada 10 segundos
-    const intervalId = setInterval(pullFromCloud, 10000);
+    // Polling recurrente cada 6 segundos
+    const intervalId = setInterval(pullFromCloud, 6000);
 
-    // Al volver a la pestaña, sincronizar inmediatamente
+    // Al enfocar ventana/pestaña
     const handleFocus = () => pullFromCloud();
     window.addEventListener('focus', handleFocus);
+
+    // Sincronización instantánea entre pestañas/ventanas del mismo navegador
+    const handleStorage = (e) => {
+      if (e.key === 'coarc_saved_designaciones') {
+        try {
+          const parsed = JSON.parse(e.newValue || '[]');
+          setDesignaciones(parsed);
+        } catch (err) {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
 
     return () => {
       clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorage);
     };
   }, []);
-
 
   // Stats del backend (opcional, no crítico)
   useEffect(() => {

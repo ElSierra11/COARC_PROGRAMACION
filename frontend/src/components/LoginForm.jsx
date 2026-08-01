@@ -35,18 +35,6 @@ export const LoginForm = ({ isOpen, onClose }) => {
     }
   };
 
-  const setAdminPreset = () => {
-    setUsername('alejosierra656@gmail.com');
-    setPassword('Alejandro10@');
-    setError('');
-  };
-
-  const setProfePreset = () => {
-    setUsername('admin');
-    setPassword('coarc2026');
-    setError('');
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-md animate-fadeIn">
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transition-colors animate-slideUp sm:animate-fadeIn">
@@ -82,37 +70,8 @@ export const LoginForm = ({ isOpen, onClose }) => {
           </div>
         )}
 
-        {/* Quick Role Fillers */}
-        <div className="px-6 pt-4 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={setAdminPreset}
-            className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              username.includes('alejosierra')
-                ? 'bg-amber-500/10 border-amber-400 text-amber-600 dark:text-amber-300 shadow-sm'
-                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-amber-300'
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5 text-amber-500" />
-            <span>Administrador</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={setProfePreset}
-            className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              username === 'admin'
-                ? 'bg-blue-600/10 border-blue-500 text-blue-700 dark:text-blue-300 shadow-sm'
-                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-blue-300'
-            }`}
-          >
-            <User className="w-3.5 h-3.5 text-blue-600" />
-            <span>Coordinador Profe</span>
-          </button>
-        </div>
-
         {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 pt-3 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && (
             <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-xl text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 flex-shrink-0 text-rose-600" />
@@ -131,7 +90,7 @@ export const LoginForm = ({ isOpen, onClose }) => {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="ej: admin o alejosierra656@gmail.com"
+                placeholder="Ingresa tu usuario o correo"
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800 dark:text-slate-200 transition"
               />
             </div>
