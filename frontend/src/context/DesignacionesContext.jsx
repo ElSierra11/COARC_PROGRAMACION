@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { designacionesService, arbitrosService } from '../services/api';
 import { cloudSyncService } from '../services/cloudSyncService';
 
@@ -64,17 +64,47 @@ export const DesignacionesProvider = ({ children }) => {
     }
   };
 
-  // Enviar estado actual a la nube en segundo plano
-  const pushToCloud = useCallback((overrideState = {}) => {
-    const stateToPush = {
-      designaciones,
-      customArbitros,
-      disponibilidades,
-      pagosState,
-      ...overrideState
-    };
-    cloudSyncService.pushCloudData(stateToPush);
-  }, [designaciones, customArbitros, disponibilidades, pagosState]);
+  // Enviar estado a la nube — siempre lee el estado MÁS RECIENTE de localStorage
+  // para evitar el problema de closures con estado stale del useCallback.
+  const pushToCloud = (overrideState = {}) => {
+    let freshDesignaciones = overrideState.designaciones;
+    let freshCustomArbitros = overrideState.customArbitros;
+    let freshDisponibilidades = overrideState.disponibilidades;
+    let freshPagosState = overrideState.pagosState;
+
+    // Si no se pasa override, leer directamente de localStorage (siempre fresco)
+    if (!freshDesignaciones) {
+      try {
+        const raw = localStorage.getItem('coarc_saved_designaciones');
+        freshDesignaciones = raw ? JSON.parse(raw) : [];
+      } catch (e) { freshDesignaciones = []; }
+    }
+    if (!freshCustomArbitros) {
+      try {
+        const raw = localStorage.getItem('coarc_custom_arbitros');
+        freshCustomArbitros = raw ? JSON.parse(raw) : [];
+      } catch (e) { freshCustomArbitros = []; }
+    }
+    if (!freshDisponibilidades) {
+      try {
+        const raw = localStorage.getItem('coarc_disponibilidades');
+        freshDisponibilidades = raw ? JSON.parse(raw) : {};
+      } catch (e) { freshDisponibilidades = {}; }
+    }
+    if (!freshPagosState) {
+      try {
+        const raw = localStorage.getItem('coarc_pagos_state');
+        freshPagosState = raw ? JSON.parse(raw) : {};
+      } catch (e) { freshPagosState = {}; }
+    }
+
+    cloudSyncService.pushCloudData({
+      designaciones: freshDesignaciones,
+      customArbitros: freshCustomArbitros,
+      disponibilidades: freshDisponibilidades,
+      pagosState: freshPagosState
+    });
+  };
 
   const addCustomArbitros = (namesArray) => {
     const cleanNames = namesArray
@@ -148,48 +178,61 @@ export const DesignacionesProvider = ({ children }) => {
     }
   };
 
-  // Carga y fusiona datos de la Nube (Cloud Sync)
+  // Carga datos de la Nube y los PRIORIZA sobre el caché local.
+  // La nube es la fuente de verdad compartida entre dispositivos.
   const fetchCloudSyncData = async () => {
     const cloudData = await cloudSyncService.fetchCloudData();
-    if (cloudData) {
-      if (Array.isArray(cloudData.designaciones)) {
-        let localSaved = [];
-        try {
-          const raw = localStorage.getItem('coarc_saved_designaciones');
-          localSaved = raw ? JSON.parse(raw) : [];
-        } catch (e) {}
+    if (!cloudData) return;
 
-        const mergedMap = new Map();
-        cloudData.designaciones.forEach(d => { if (d && d.id) mergedMap.set(d.id, d); });
-        localSaved.forEach(d => { if (d && d.id && !mergedMap.has(d.id)) mergedMap.set(d.id, d); });
+    // --- DESIGNACIONES: la nube siempre manda ---
+    if (Array.isArray(cloudData.designaciones)) {
+      // Obtener también lo que hay localmente para no perder partidos
+      // que se hayan creado en ESTE dispositivo aún sin subir
+      let localSaved = [];
+      try {
+        const raw = localStorage.getItem('coarc_saved_designaciones');
+        localSaved = raw ? JSON.parse(raw) : [];
+      } catch (e) {}
 
-        const mergedList = Array.from(mergedMap.values());
-        saveToLocal(mergedList);
+      const mergedMap = new Map();
+
+      // Primero el local (base)
+      if (Array.isArray(localSaved)) {
+        localSaved.forEach(d => { if (d && d.id) mergedMap.set(d.id, d); });
       }
 
-      if (Array.isArray(cloudData.customArbitros) && cloudData.customArbitros.length > 0) {
-        setCustomArbitros(prev => {
-          const union = Array.from(new Set([...prev, ...cloudData.customArbitros]));
-          try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(union)); } catch (e) {}
-          return union;
-        });
-      }
+      // Luego la nube SOBREESCRIBE: garantiza que los partidos de otros dispositivos aparezcan
+      cloudData.designaciones.forEach(d => { if (d && d.id) mergedMap.set(d.id, d); });
 
-      if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
-        setDisponibilidades(prev => {
-          const merged = { ...prev, ...cloudData.disponibilidades };
-          try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(merged)); } catch (e) {}
-          return merged;
-        });
-      }
+      const mergedList = Array.from(mergedMap.values());
+      saveToLocal(mergedList);
+    }
 
-      if (cloudData.pagosState && typeof cloudData.pagosState === 'object') {
-        setPagosState(prev => {
-          const merged = { ...prev, ...cloudData.pagosState };
-          try { localStorage.setItem('coarc_pagos_state', JSON.stringify(merged)); } catch (e) {}
-          return merged;
-        });
-      }
+    // --- ÁRBITROS PERSONALIZADOS: unión de ambos ---
+    if (Array.isArray(cloudData.customArbitros) && cloudData.customArbitros.length > 0) {
+      setCustomArbitros(prev => {
+        const union = Array.from(new Set([...prev, ...cloudData.customArbitros]));
+        try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(union)); } catch (e) {}
+        return union;
+      });
+    }
+
+    // --- DISPONIBILIDADES: nube sobreescribe local ---
+    if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
+      setDisponibilidades(prev => {
+        const merged = { ...prev, ...cloudData.disponibilidades };
+        try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(merged)); } catch (e) {}
+        return merged;
+      });
+    }
+
+    // --- PAGOS: nube sobreescribe local ---
+    if (cloudData.pagosState && typeof cloudData.pagosState === 'object') {
+      setPagosState(prev => {
+        const merged = { ...prev, ...cloudData.pagosState };
+        try { localStorage.setItem('coarc_pagos_state', JSON.stringify(merged)); } catch (e) {}
+        return merged;
+      });
     }
   };
 
@@ -260,6 +303,7 @@ export const DesignacionesProvider = ({ children }) => {
     const newDes = { ...data, id: Date.now(), item: designaciones.length + 1 };
     const updated = [...designaciones, newDes];
     saveToLocal(updated);
+    // Pasar la lista actualizada DIRECTAMENTE para evitar estado stale
     pushToCloud({ designaciones: updated });
 
     designacionesService.createDesignacion(data).catch(err =>
