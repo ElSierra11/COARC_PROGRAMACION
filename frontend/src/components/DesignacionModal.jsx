@@ -246,7 +246,10 @@ export const DesignacionModal = ({ isOpen, onClose, initialData = null }) => {
       esCuadra ? emergente : null,
     ].filter(Boolean);
 
-    addCustomArbitros(namesToRegister);
+    // Solo registrar en el backend — el autocompletado usa 'fromDesignaciones'
+    // (calculado dinámicamente desde los partidos activos, no desde customArbitros)
+    // Si los árbitros se agregaran a customArbitros aquí, persistirían en la lista
+    // aunque el partido fuera eliminado.
     Promise.allSettled(namesToRegister.map(n => autoRegisterArbitro(n)));
   };
 

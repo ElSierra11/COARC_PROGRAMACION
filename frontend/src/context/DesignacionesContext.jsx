@@ -29,7 +29,10 @@ export const DesignacionesProvider = ({ children }) => {
     try {
       const saved = localStorage.getItem('coarc_custom_arbitros');
       const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      // Deduplicar al cargar: normalizar a mayúsculas y eliminar duplicados del localStorage viejo
+      const deduped = Array.from(new Set(parsed.map(n => n?.trim().toUpperCase()).filter(Boolean)));
+      return deduped;
     } catch (e) { return []; }
   });
 
@@ -72,6 +75,27 @@ export const DesignacionesProvider = ({ children }) => {
   };
 
   // ────────────────────────────────────────────────────────────────────
+  // Helpers para rastrear IDs eliminados — evita que el cloud sync los restaure
+  // ────────────────────────────────────────────────────────────────────
+  const getDeletedIds = () => {
+    try {
+      const raw = localStorage.getItem('coarc_deleted_ids');
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  };
+
+  const addDeletedId = (id) => {
+    const ids = getDeletedIds();
+    const idStr = String(id);
+    if (!ids.includes(idStr)) {
+      ids.push(idStr);
+      // Mantener solo los últimos 500 IDs eliminados para no crecer indefinidamente
+      const trimmed = ids.slice(-500);
+      try { localStorage.setItem('coarc_deleted_ids', JSON.stringify(trimmed)); } catch (e) {}
+    }
+  };
+
+  // ────────────────────────────────────────────────────────────────────
   // PUSH A LA NUBE
   // Siempre pasa la lista ACTUALIZADA directamente. Nunca lee del estado React
   // (que puede ser stale). Lee customArbitros/disponibilidades/pagos de
@@ -106,11 +130,13 @@ export const DesignacionesProvider = ({ children }) => {
   };
 
   // Helper para fusionar listas de partidos sin perder ninguno
+  // Respeta los IDs eliminados localmente para que el cloud no los restaure
   const mergeDesignaciones = (localArr = [], cloudArr = []) => {
+    const deletedIds = new Set(getDeletedIds().map(String));
     const map = new Map();
 
     localArr.forEach(item => {
-      if (item && item.id) {
+      if (item && item.id && !deletedIds.has(String(item.id))) {
         map.set(String(item.id), item);
       }
     });
@@ -118,6 +144,7 @@ export const DesignacionesProvider = ({ children }) => {
     cloudArr.forEach(item => {
       if (item && item.id) {
         const key = String(item.id);
+        if (deletedIds.has(key)) return; // Este ID fue eliminado localmente → ignorar
         const existing = map.get(key);
         if (!existing) {
           map.set(key, item);
@@ -311,6 +338,7 @@ export const DesignacionesProvider = ({ children }) => {
   const deleteDesignacion = (id) => {
     const current = readDesignacionesLocal();
     const updated = current.filter(d => d.id !== id);
+    addDeletedId(id); // Registrar el ID eliminado para que el cloud sync no lo restaure
     saveDesignacionesLocal(updated);
     pushToCloud(updated);
     designacionesService.deleteDesignacion(id).catch(() => {});
