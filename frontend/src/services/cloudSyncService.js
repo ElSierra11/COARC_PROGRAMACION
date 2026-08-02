@@ -38,7 +38,15 @@ export const cloudSyncService = {
       return null;
     }
 
-    const localDesignaciones = localState?.designaciones || [];
+    // Bug #1 fix: leer del localStorage directamente para tener el valor más fresco.
+    // El estado React pasado puede estar stale (vacío) en un dispositivo recién iniciado.
+    let localDesignaciones = localState?.designaciones || [];
+    if (localDesignaciones.length === 0) {
+      try {
+        const raw = localStorage.getItem('coarc_saved_designaciones');
+        localDesignaciones = raw ? JSON.parse(raw) : [];
+      } catch (e) {}
+    }
     if (localDesignaciones.length === 0) {
       console.log('[CloudSync] Push cancelado: lista local vacía, se protege la nube.');
       return null;

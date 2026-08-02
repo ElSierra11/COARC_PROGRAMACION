@@ -5,8 +5,14 @@ import { cloudSyncService } from '../services/cloudSyncService';
 const DesignacionesContext = createContext();
 
 export const DesignacionesProvider = ({ children }) => {
-  const [selectedDateIso, setSelectedDateIso] = useState('2026-08-01');
-  const [selectedDateLabel, setSelectedDateLabel] = useState('SABADO 01 AGOSTO');
+  // Bug #7 fix: usar la fecha actual del sistema en lugar de una fecha hardcodeada
+  const [selectedDateIso, setSelectedDateIso] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDateLabel, setSelectedDateLabel] = useState(() => {
+    const d = new Date();
+    const DIAS = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
+    const MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+    return `${DIAS[d.getDay()]} ${String(d.getDate()).padStart(2, '0')} ${MESES[d.getMonth()]}`;
+  });
 
   // ────────────────────────────────────────────────────────────────────
   // Estado inicial desde localStorage
@@ -148,7 +154,10 @@ export const DesignacionesProvider = ({ children }) => {
 
     if (Array.isArray(cloudData.customArbitros) && cloudData.customArbitros.length > 0) {
       setCustomArbitros(prev => {
-        const union = Array.from(new Set([...prev, ...cloudData.customArbitros]));
+        // Bug #2 fix: normalizar a mayúsculas antes de deduplicar (Set es case-sensitive)
+        const normalizedPrev = prev.map(n => n?.trim().toUpperCase()).filter(Boolean);
+        const normalizedCloud = cloudData.customArbitros.map(n => n?.trim().toUpperCase()).filter(Boolean);
+        const union = Array.from(new Set([...normalizedPrev, ...normalizedCloud]));
         try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(union)); } catch (e) {}
         return union;
       });
@@ -156,9 +165,24 @@ export const DesignacionesProvider = ({ children }) => {
 
     if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
       setDisponibilidades(prev => {
-        const merged = { ...prev, ...cloudData.disponibilidades };
-        try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(merged)); } catch (e) {}
-        return merged;
+        // Bug #3 fix: deep merge por árbitro usando updatedAt para no perder cambios locales
+        const result = { ...prev };
+        Object.entries(cloudData.disponibilidades).forEach(([fecha, arbitros]) => {
+          if (!result[fecha]) {
+            result[fecha] = arbitros;
+          } else {
+            const mergedFecha = { ...result[fecha] };
+            Object.entries(arbitros || {}).forEach(([arbitro, data]) => {
+              const existing = mergedFecha[arbitro];
+              if (!existing || (data.updatedAt && (!existing.updatedAt || data.updatedAt > existing.updatedAt))) {
+                mergedFecha[arbitro] = data;
+              }
+            });
+            result[fecha] = mergedFecha;
+          }
+        });
+        try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(result)); } catch (e) {}
+        return result;
       });
     }
 
@@ -200,8 +224,16 @@ export const DesignacionesProvider = ({ children }) => {
 
         saveDesignacionesLocal(merged);
 
-        if (merged.length > cloudList.length) {
-          console.log(`[CloudSync] Subiendo ${merged.length} partidos combinados a la nube...`);
+        // Bug #4 fix: detectar cambios por contenido, no solo por cantidad.
+        // Si se editó un árbitro o estado de un partido existente, el count es igual → antes no subía.
+        const cloudMap = new Map(cloudList.map(d => [String(d.id), d]));
+        const hasNew = merged.some(d => !cloudMap.has(String(d.id)));
+        const hasModified = merged.some(d => {
+          const cloudItem = cloudMap.get(String(d.id));
+          return cloudItem && (d.updatedAt || 0) > (cloudItem.updatedAt || 0);
+        });
+        if (hasNew || hasModified) {
+          console.log(`[CloudSync] Subiendo ${merged.length} partidos (cambios detectados) a la nube...`);
           cloudSyncService.pushCloudData({
             designaciones: merged,
             customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
@@ -348,16 +380,14 @@ export const DesignacionesProvider = ({ children }) => {
     setCustomArbitros(updated);
     try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(updated)); } catch (e) {}
 
-    // Subir a la nube también los árbitros (junto con las designaciones actuales)
-    const currentDesignaciones = readDesignacionesLocal();
-    if (currentDesignaciones.length > 0) {
-      cloudSyncService.pushCloudData({
-        designaciones: currentDesignaciones,
-        customArbitros: updated,
-        disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
-        pagosState: JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}')
-      });
-    }
+    // Bug #6 fix: siempre sincronizar árbitros a la nube sin guard de designaciones.
+    // El guard anti-vaciado ya vive dentro de cloudSyncService.pushCloudData.
+    cloudSyncService.pushCloudData({
+      designaciones: readDesignacionesLocal(),
+      customArbitros: updated,
+      disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
+      pagosState: JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}')
+    });
   };
 
   const removeCustomArbitro = (name) => {
@@ -366,15 +396,13 @@ export const DesignacionesProvider = ({ children }) => {
     const updated = customArbitros.filter(n => n.toUpperCase() !== clean);
     setCustomArbitros(updated);
     try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(updated)); } catch (e) {}
-    const currentDesignaciones = readDesignacionesLocal();
-    if (currentDesignaciones.length > 0) {
-      cloudSyncService.pushCloudData({
-        designaciones: currentDesignaciones,
-        customArbitros: updated,
-        disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
-        pagosState: JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}')
-      });
-    }
+    // Bug #6 fix: siempre sincronizar
+    cloudSyncService.pushCloudData({
+      designaciones: readDesignacionesLocal(),
+      customArbitros: updated,
+      disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
+      pagosState: JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}')
+    });
   };
 
   // ────────────────────────────────────────────────────────────────────
@@ -386,15 +414,13 @@ export const DesignacionesProvider = ({ children }) => {
     const updated = { ...pagosState, [key]: !pagosState[key] };
     setPagosState(updated);
     try { localStorage.setItem('coarc_pagos_state', JSON.stringify(updated)); } catch (e) {}
-    const currentDesignaciones = readDesignacionesLocal();
-    if (currentDesignaciones.length > 0) {
-      cloudSyncService.pushCloudData({
-        designaciones: currentDesignaciones,
-        customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
-        disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
-        pagosState: updated
-      });
-    }
+    // Bug #6 fix: siempre sincronizar pagos a la nube
+    cloudSyncService.pushCloudData({
+      designaciones: readDesignacionesLocal(),
+      customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
+      disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
+      pagosState: updated
+    });
   };
 
   const setPagoArbitroStatus = (designacionId, arbitroNombre, isPaid) => {
@@ -403,15 +429,13 @@ export const DesignacionesProvider = ({ children }) => {
     const updated = { ...pagosState, [key]: isPaid };
     setPagosState(updated);
     try { localStorage.setItem('coarc_pagos_state', JSON.stringify(updated)); } catch (e) {}
-    const currentDesignaciones = readDesignacionesLocal();
-    if (currentDesignaciones.length > 0) {
-      cloudSyncService.pushCloudData({
-        designaciones: currentDesignaciones,
-        customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
-        disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
-        pagosState: updated
-      });
-    }
+    // Bug #6 fix: siempre sincronizar pagos a la nube
+    cloudSyncService.pushCloudData({
+      designaciones: readDesignacionesLocal(),
+      customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
+      disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
+      pagosState: updated
+    });
   };
 
   // ────────────────────────────────────────────────────────────────────
@@ -428,15 +452,13 @@ export const DesignacionesProvider = ({ children }) => {
       };
       const newDisp = { ...prev, [fechaIso]: updatedFecha };
       try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(newDisp)); } catch (e) {}
-      const currentDesignaciones = readDesignacionesLocal();
-      if (currentDesignaciones.length > 0) {
-        cloudSyncService.pushCloudData({
-          designaciones: currentDesignaciones,
-          customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
-          disponibilidades: newDisp,
-          pagosState: JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}')
-        });
-      }
+      // Bug #6 fix: siempre sincronizar disponibilidades a la nube
+      cloudSyncService.pushCloudData({
+        designaciones: readDesignacionesLocal(),
+        customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
+        disponibilidades: newDisp,
+        pagosState: JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}')
+      });
       return newDisp;
     });
   };
