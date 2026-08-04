@@ -38,13 +38,12 @@ export const CalendarioModal = ({ isOpen, onClose, onOpenNewModalForDate }) => {
     return new Date().getMonth();
   });
 
-  if (!isOpen) return null;
-
   // Mapa de partidos por fecha ISO (ej: '2026-08-01': 5 partidos)
   const matchesByDate = useMemo(() => {
     const map = new Map();
-    designaciones.forEach(d => {
-      const iso = d.fecha_iso;
+    const safeDesignaciones = Array.isArray(designaciones) ? designaciones : [];
+    safeDesignaciones.forEach(d => {
+      const iso = d?.fecha_iso;
       if (iso) {
         map.set(iso, (map.get(iso) || 0) + 1);
       }
@@ -101,6 +100,9 @@ export const CalendarioModal = ({ isOpen, onClose, onOpenNewModalForDate }) => {
 
     return days;
   }, [currentYear, currentMonth, matchesByDate, selectedDateIso]);
+
+  // TODOS LOS HOOKS SE EJECUTAN SIEMPRE -> AHORA SÍ EL RETURN DE GUARDIA
+  if (!isOpen) return null;
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
