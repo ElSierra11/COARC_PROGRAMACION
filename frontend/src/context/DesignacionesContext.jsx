@@ -14,7 +14,7 @@ export const DesignacionesProvider = ({ children }) => {
   });
 
   // ────────────────────────────────────────────────────────────────────
-  // Estado inicial desde localStorage (Cache rápida mientras conecta a la nube)
+  // Estado inicial desde localStorage (Cache rápida temporal)
   // ────────────────────────────────────────────────────────────────────
   const [designaciones, setDesignaciones] = useState(() => {
     try {
@@ -101,47 +101,29 @@ export const DesignacionesProvider = ({ children }) => {
   };
 
   // ────────────────────────────────────────────────────────────────────
-  // FETCH Y SINCRONIZACIÓN DESDE LA NUBE (Fuente de la Verdad)
+  // FETCH Y SINCRONIZACIÓN DESDE LA NUBE (La Nube es la Fuente de la Verdad)
   // ────────────────────────────────────────────────────────────────────
   const pullFromCloud = async () => {
     const cloudData = await cloudSyncService.fetchCloudData();
-    if (!cloudData) return; // Si falla la red o sin conexión, mantiene datos locales
+    if (!cloudData) return;
 
     if (Array.isArray(cloudData.designaciones)) {
-      const localList = readDesignacionesLocal();
-      if (JSON.stringify(cloudData.designaciones) !== JSON.stringify(localList)) {
-        saveDesignacionesLocal(cloudData.designaciones);
-      }
+      saveDesignacionesLocal(cloudData.designaciones);
     }
 
     if (Array.isArray(cloudData.customArbitros)) {
-      setCustomArbitros(prev => {
-        if (JSON.stringify(prev) !== JSON.stringify(cloudData.customArbitros)) {
-          try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(cloudData.customArbitros)); } catch (e) {}
-          return cloudData.customArbitros;
-        }
-        return prev;
-      });
+      setCustomArbitros(cloudData.customArbitros);
+      try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(cloudData.customArbitros)); } catch (e) {}
     }
 
     if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
-      setDisponibilidades(prev => {
-        if (JSON.stringify(prev) !== JSON.stringify(cloudData.disponibilidades)) {
-          try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(cloudData.disponibilidades)); } catch (e) {}
-          return cloudData.disponibilidades;
-        }
-        return prev;
-      });
+      setDisponibilidades(cloudData.disponibilidades);
+      try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(cloudData.disponibilidades)); } catch (e) {}
     }
 
     if (cloudData.pagosState && typeof cloudData.pagosState === 'object') {
-      setPagosState(prev => {
-        if (JSON.stringify(prev) !== JSON.stringify(cloudData.pagosState)) {
-          try { localStorage.setItem('coarc_pagos_state', JSON.stringify(cloudData.pagosState)); } catch (e) {}
-          return cloudData.pagosState;
-        }
-        return prev;
-      });
+      setPagosState(cloudData.pagosState);
+      try { localStorage.setItem('coarc_pagos_state', JSON.stringify(cloudData.pagosState)); } catch (e) {}
     }
   };
 
@@ -159,46 +141,25 @@ export const DesignacionesProvider = ({ children }) => {
   };
 
   // ────────────────────────────────────────────────────────────────────
-  // Carga inicial, polling (cada 5s) y sync al enfocar ventana
+  // Carga inicial inmediata, polling (cada 4s) y sync al enfocar ventana
   // ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchArbitros();
 
-    const initialSync = async () => {
-      const cloudData = await cloudSyncService.fetchCloudData();
-      const localList = readDesignacionesLocal();
+    // Carga de inmediato los datos más recientes de la nube al refrescar la página
+    pullFromCloud();
 
-      if (cloudData !== null && Array.isArray(cloudData.designaciones)) {
-        // Si la nube tiene partidos o si ambos están vacíos, adoptar la nube
-        if (cloudData.designaciones.length > 0 || localList.length === 0) {
-          saveDesignacionesLocal(cloudData.designaciones);
-          if (Array.isArray(cloudData.customArbitros)) {
-            setCustomArbitros(cloudData.customArbitros);
-            try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(cloudData.customArbitros)); } catch (e) {}
-          }
-          if (cloudData.disponibilidades) {
-            setDisponibilidades(cloudData.disponibilidades);
-            try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(cloudData.disponibilidades)); } catch (e) {}
-          }
-          if (cloudData.pagosState) {
-            setPagosState(cloudData.pagosState);
-            try { localStorage.setItem('coarc_pagos_state', JSON.stringify(cloudData.pagosState)); } catch (e) {}
-          }
-        } else if (localList.length > 0 && cloudData.designaciones.length === 0) {
-          // Si local tiene partidos y la nube recién creada está vacía, subir local a la nube
-          pushToCloud(localList);
-        }
-      }
+    // Polling constante cada 4 segundos
+    const intervalId = setInterval(pullFromCloud, 4000);
+
+    // Sincronizar inmediatamente al enfocar o hacer visible la app
+    const handleFocus = () => pullFromCloud();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') pullFromCloud();
     };
 
-    initialSync();
-
-    // Polling constante cada 5 segundos para sincronización entre dispositivos
-    const intervalId = setInterval(pullFromCloud, 5000);
-
-    // Sincronizar inmediatamente cuando el usuario abre o vuelve a enfocar la app (pantalla/pestaña)
-    const handleFocus = () => pullFromCloud();
     window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const handleStorage = (e) => {
       if (e.key === 'coarc_saved_designaciones') {
@@ -213,6 +174,7 @@ export const DesignacionesProvider = ({ children }) => {
     return () => {
       clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('storage', handleStorage);
     };
   }, []);
