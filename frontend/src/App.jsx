@@ -12,7 +12,8 @@ import { OfficialCoarcPrintSheet } from './components/OfficialCoarcPrintSheet';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { PresupuestoModal } from './components/PresupuestoModal';
 import { CalendarioModal } from './components/CalendarioModal';
-import { Shield, RefreshCw, Plus, Calendar, Activity, Share2, Printer, Lock, LogOut, DollarSign } from 'lucide-react';
+import { ImportarClonarModal } from './components/ImportarClonarModal';
+import { Shield, RefreshCw, Plus, Calendar, Activity, Share2, Printer, Lock, LogOut, DollarSign, FileSpreadsheet } from 'lucide-react';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -71,6 +72,7 @@ function AppContent() {
   const [isAdminPanelModalOpen, setIsAdminPanelModalOpen] = useState(false);
   const [isPresupuestoModalOpen, setIsPresupuestoModalOpen] = useState(false);
   const [isCalendarioModalOpen, setIsCalendarioModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingDesignacion, setEditingDesignacion] = useState(null);
 
   const { isAdmin, isSuperAdmin, logout, user, requireAuth } = useAuth();
@@ -104,6 +106,7 @@ function AppContent() {
         onOpenAdminModal={() => setIsAdminPanelModalOpen(true)}
         onOpenPresupuestoModal={() => setIsPresupuestoModalOpen(true)}
         onOpenCalendarioModal={() => setIsCalendarioModalOpen(true)}
+        onOpenImportModal={() => setIsImportModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -152,6 +155,14 @@ function AppContent() {
         >
           <Share2 className="w-5 h-5 text-emerald-500" />
           <span>WA / Office</span>
+        </button>
+
+        <button
+          onClick={() => setIsImportModalOpen(true)}
+          className="flex flex-col items-center gap-1 p-1 hover:text-blue-600 dark:hover:text-blue-400"
+        >
+          <FileSpreadsheet className="w-5 h-5 text-blue-500" />
+          <span>Importar</span>
         </button>
 
         <button
@@ -204,6 +215,11 @@ function AppContent() {
       <CalendarioModal
         isOpen={isCalendarioModalOpen}
         onClose={() => setIsCalendarioModalOpen(false)}
+      />
+
+      <ImportarClonarModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
       />
 
       {/* Printable Sheet (Rendered on Ctrl+P) */}

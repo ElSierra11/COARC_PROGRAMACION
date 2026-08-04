@@ -17,7 +17,8 @@ import {
   Menu,
   X,
   Shield,
-  DollarSign
+  DollarSign,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export const Navbar = ({
@@ -27,7 +28,8 @@ export const Navbar = ({
   onOpenLoginModal,
   onOpenAdminModal,
   onOpenPresupuestoModal,
-  onOpenCalendarioModal
+  onOpenCalendarioModal,
+  onOpenImportModal
 }) => {
   const { theme, toggleTheme } = useTheme();
   const { user, logout, isAdmin, isSuperAdmin, requireAuth } = useAuth();
@@ -155,6 +157,16 @@ export const Navbar = ({
           >
             <Printer className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             <span>Imprimir</span>
+          </button>
+
+          {/* Import Excel Button */}
+          <button
+            onClick={onOpenImportModal}
+            className="p-2 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-bold"
+            title="Cargar e Importar Programación desde Archivo Excel (.xlsx, .csv)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Importar Excel</span>
           </button>
 
           {/* New Match Button */}

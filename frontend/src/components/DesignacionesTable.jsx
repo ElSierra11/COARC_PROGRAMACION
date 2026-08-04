@@ -26,7 +26,8 @@ import {
   UserCheck2,
   Grid,
   List,
-  DollarSign
+  DollarSign,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export const DesignacionesTable = ({ onEditModal }) => {
@@ -224,12 +225,12 @@ export const DesignacionesTable = ({ onEditModal }) => {
               type="button"
               onClick={() => requireAuth(
                 () => setIsImportModalOpen(true),
-                'Debes iniciar sesión con las credenciales de Coordinador Arbitral para usar Carga Rápida o Duplicar Jornada.'
+                'Debes iniciar sesión con las credenciales de Coordinador Arbitral para Importar Excel o Cargar Rápido.'
               )}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
             >
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Carga Rápida / Duplicar Jornada</span>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span>Importar Excel / Carga Rápida</span>
             </button>
 
             <button
