@@ -10,7 +10,9 @@ import { WhatsAppExportModal } from './components/WhatsAppExportModal';
 import { LoginForm } from './components/LoginForm';
 import { OfficialCoarcPrintSheet } from './components/OfficialCoarcPrintSheet';
 import { AdminPanelModal } from './components/AdminPanelModal';
-import { Shield, RefreshCw, Plus, Calendar, Activity, Share2, Printer, Lock, LogOut } from 'lucide-react';
+import { PresupuestoModal } from './components/PresupuestoModal';
+import { CalendarioModal } from './components/CalendarioModal';
+import { Shield, RefreshCw, Plus, Calendar, Activity, Share2, Printer, Lock, LogOut, DollarSign } from 'lucide-react';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -67,6 +69,8 @@ function AppContent() {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isAdminPanelModalOpen, setIsAdminPanelModalOpen] = useState(false);
+  const [isPresupuestoModalOpen, setIsPresupuestoModalOpen] = useState(false);
+  const [isCalendarioModalOpen, setIsCalendarioModalOpen] = useState(false);
   const [editingDesignacion, setEditingDesignacion] = useState(null);
 
   const { isAdmin, isSuperAdmin, logout, user, requireAuth } = useAuth();
@@ -98,6 +102,8 @@ function AppContent() {
         onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
         onOpenLoginModal={() => setIsLoginModalOpen(true)}
         onOpenAdminModal={() => setIsAdminPanelModalOpen(true)}
+        onOpenPresupuestoModal={() => setIsPresupuestoModalOpen(true)}
+        onOpenCalendarioModal={() => setIsCalendarioModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -117,11 +123,19 @@ function AppContent() {
       {/* Mobile Bottom Navigation Bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 py-2 pb-safe flex items-center justify-around text-[10px] font-bold text-slate-600 dark:text-slate-400 no-print shadow-lg">
         <button
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          onClick={() => setIsCalendarioModalOpen(true)}
           className="flex flex-col items-center gap-1 p-1 hover:text-blue-600 dark:hover:text-blue-400"
         >
           <Calendar className="w-5 h-5 text-blue-600" />
-          <span>Partidos</span>
+          <span>Calendario</span>
+        </button>
+
+        <button
+          onClick={() => setIsPresupuestoModalOpen(true)}
+          className="flex flex-col items-center gap-1 p-1 hover:text-emerald-600 dark:hover:text-emerald-400"
+        >
+          <DollarSign className="w-5 h-5 text-emerald-500" />
+          <span>Presupuesto</span>
         </button>
 
         <button
@@ -137,15 +151,7 @@ function AppContent() {
           className="flex flex-col items-center gap-1 p-1 hover:text-emerald-600 dark:hover:text-emerald-400"
         >
           <Share2 className="w-5 h-5 text-emerald-500" />
-          <span>WhatsApp</span>
-        </button>
-
-        <button
-          onClick={() => window.print()}
-          className="flex flex-col items-center gap-1 p-1 hover:text-indigo-600 dark:hover:text-indigo-400"
-        >
-          <Printer className="w-5 h-5 text-indigo-500" />
-          <span>Imprimir</span>
+          <span>WA / Office</span>
         </button>
 
         <button
@@ -188,6 +194,16 @@ function AppContent() {
       <AdminPanelModal
         isOpen={isAdminPanelModalOpen}
         onClose={() => setIsAdminPanelModalOpen(false)}
+      />
+
+      <PresupuestoModal
+        isOpen={isPresupuestoModalOpen}
+        onClose={() => setIsPresupuestoModalOpen(false)}
+      />
+
+      <CalendarioModal
+        isOpen={isCalendarioModalOpen}
+        onClose={() => setIsCalendarioModalOpen(false)}
       />
 
       {/* Printable Sheet (Rendered on Ctrl+P) */}

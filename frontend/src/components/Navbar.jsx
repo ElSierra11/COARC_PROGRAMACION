@@ -16,7 +16,8 @@ import {
   Lock,
   Menu,
   X,
-  Shield
+  Shield,
+  DollarSign
 } from 'lucide-react';
 
 export const Navbar = ({
@@ -24,7 +25,9 @@ export const Navbar = ({
   onOpenStatsModal,
   onOpenWhatsAppModal,
   onOpenLoginModal,
-  onOpenAdminModal
+  onOpenAdminModal,
+  onOpenPresupuestoModal,
+  onOpenCalendarioModal
 }) => {
   const { theme, toggleTheme } = useTheme();
   const { user, logout, isAdmin, isSuperAdmin, requireAuth } = useAuth();
@@ -90,13 +93,19 @@ export const Navbar = ({
     <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-blue-100 dark:border-slate-800 shadow-sm transition-colors duration-200 no-print">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
         
-        {/* Logo (Clic para resetear filtros e ir a la programación principal) */}
+        {/* Logo */}
         <CoarcLogo onClick={handleLogoClick} />
 
-        {/* Date Selector Banner (Desktop) */}
+        {/* Date Selector Banner & Calendar Modal Trigger */}
         <div className="hidden md:flex items-center gap-2 bg-blue-50 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-blue-100 dark:border-slate-700 text-slate-800 dark:text-slate-200">
-          <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-          <span className="text-xs font-bold uppercase tracking-wider">{selectedDateLabel}</span>
+          <button
+            onClick={onOpenCalendarioModal}
+            className="flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition"
+            title="Abrir Vista de Calendario Interactivo"
+          >
+            <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span className="text-xs font-bold uppercase tracking-wider">{selectedDateLabel}</span>
+          </button>
           <input
             type="date"
             value={selectedDateIso}
@@ -107,6 +116,17 @@ export const Navbar = ({
 
         {/* Desktop Action Buttons */}
         <div className="hidden md:flex items-center gap-2">
+          
+          {/* Botón Presupuesto Corporativo */}
+          <button
+            onClick={onOpenPresupuestoModal}
+            className="p-2 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-bold"
+            title="Ver Presupuesto Corporativo de Ingresos y Egresos"
+          >
+            <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Presupuesto</span>
+          </button>
+
           {/* Workload Stats */}
           <button
             onClick={onOpenStatsModal}
@@ -117,14 +137,14 @@ export const Navbar = ({
             <span>Carga Árbitros</span>
           </button>
 
-          {/* WhatsApp Share */}
+          {/* WhatsApp Share / Image / Office */}
           <button
             onClick={onOpenWhatsAppModal}
             className="p-2 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-medium"
-            title="Formatear para WhatsApp"
+            title="Exportar WhatsApp / Imagen / Office"
           >
             <Share2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>WhatsApp</span>
+            <span>WhatsApp / Exportar</span>
           </button>
 
           {/* Print */}
@@ -203,24 +223,20 @@ export const Navbar = ({
 
         {/* Mobile Header Right Controls */}
         <div className="flex md:hidden items-center gap-1.5">
-          {/* User Badge if Logged In */}
           {user && (
             <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-xs">
               {user.role === 'ADMIN' ? 'ADMIN' : 'PROFE'}
             </span>
           )}
 
-          {/* Quick Date Trigger Badge (Mobile) */}
-          <div className="relative flex items-center gap-1 bg-blue-50 dark:bg-slate-800 px-2 py-1 rounded-lg border border-blue-100 dark:border-slate-700 text-[11px] font-bold text-blue-900 dark:text-blue-200">
+          {/* Quick Calendar Trigger Badge (Mobile) */}
+          <button
+            onClick={onOpenCalendarioModal}
+            className="flex items-center gap-1 bg-blue-50 dark:bg-slate-800 px-2 py-1 rounded-lg border border-blue-100 dark:border-slate-700 text-[11px] font-bold text-blue-900 dark:text-blue-200"
+          >
             <Calendar className="w-3.5 h-3.5 text-blue-600" />
             <span className="truncate max-w-[110px]">{selectedDateLabel}</span>
-            <input
-              type="date"
-              value={selectedDateIso}
-              onChange={handleDateChange}
-              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-            />
-          </div>
+          </button>
 
           {/* Theme Toggle Mobile */}
           <button
@@ -274,6 +290,22 @@ export const Navbar = ({
           {/* Actions List */}
           <div className="grid grid-cols-2 gap-2 text-xs font-bold">
             <button
+              onClick={() => { onOpenPresupuestoModal(); setMobileMenuOpen(false); }}
+              className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-900 dark:text-emerald-200 rounded-xl flex items-center gap-2"
+            >
+              <DollarSign className="w-4 h-4 text-emerald-600" />
+              <span>Presupuesto</span>
+            </button>
+
+            <button
+              onClick={() => { onOpenCalendarioModal(); setMobileMenuOpen(false); }}
+              className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-blue-900 dark:text-blue-200 rounded-xl flex items-center gap-2"
+            >
+              <Calendar className="w-4 h-4 text-blue-600" />
+              <span>Calendario</span>
+            </button>
+
+            <button
               onClick={() => { onOpenStatsModal(); setMobileMenuOpen(false); }}
               className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200 rounded-xl flex items-center gap-2"
             >
@@ -286,7 +318,7 @@ export const Navbar = ({
               className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-900 dark:text-emerald-200 rounded-xl flex items-center gap-2"
             >
               <Share2 className="w-4 h-4 text-emerald-600" />
-              <span>Exportar WA</span>
+              <span>Exportar WA/Office</span>
             </button>
 
             <button
@@ -294,7 +326,7 @@ export const Navbar = ({
               className="p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900 text-indigo-900 dark:text-indigo-200 rounded-xl flex items-center gap-2"
             >
               <Printer className="w-4 h-4 text-indigo-600" />
-              <span>Imprimir Hoja</span>
+              <span>Imprimir</span>
             </button>
 
             <button
