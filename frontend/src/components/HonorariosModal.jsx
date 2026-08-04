@@ -16,6 +16,7 @@ export const HonorariosModal = ({ isOpen, onClose }) => {
   const {
     designaciones,
     selectedDateLabel,
+    selectedDateIso,
     pagosState,
     togglePagoArbitro,
     setPagoArbitroStatus,
@@ -35,13 +36,18 @@ export const HonorariosModal = ({ isOpen, onClose }) => {
     });
   };
 
-  // Calcular agregación de honorarios por partido y por árbitro
+  // Calcular agregación de honorarios por partido y por árbitro (solo para la jornada seleccionada)
   const { refereePayroll, totalJornada, totalPagado, totalPendiente } = useMemo(() => {
     let grandTotal = 0;
     let paidTotal = 0;
-    const refereeMap = {}; // { REFEREE_NAME: { nombre, partidos: [{ id, partido, hora, cancha, rol, tarifa, isPaid }], totalEarned, totalPaid, isFullyPaid } }
+    const refereeMap = {};
 
-    safeDesignaciones.forEach((des, idx) => {
+    // Filtrar solo los partidos de la fecha activa
+    const desJornada = safeDesignaciones.filter(
+      d => !d.fecha_iso || d.fecha_iso === selectedDateIso
+    );
+
+    desJornada.forEach((des, idx) => {
       const desId = des.id || `des_${idx}`;
       const feePrincipal = des.tarifa_principal !== undefined && des.tarifa_principal !== null ? parseInt(des.tarifa_principal, 10) : 0;
       const feeAsistente = des.tarifa_asistente !== undefined && des.tarifa_asistente !== null ? parseInt(des.tarifa_asistente, 10) : 0;
@@ -103,7 +109,7 @@ export const HonorariosModal = ({ isOpen, onClose }) => {
       totalPagado: paidTotal,
       totalPendiente: grandTotal - paidTotal
     };
-  }, [safeDesignaciones, pagosState]);
+  }, [safeDesignaciones, pagosState, selectedDateIso]);
 
   if (!isOpen) return null;
 

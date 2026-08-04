@@ -2,6 +2,7 @@ import React, { useState, Component } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DesignacionesProvider } from './context/DesignacionesContext';
+import { ToastProvider } from './context/ToastContext';
 import { Navbar } from './components/Navbar';
 import { DesignacionesTable } from './components/DesignacionesTable';
 import { DesignacionModal } from './components/DesignacionModal';
@@ -111,7 +112,10 @@ function AppContent() {
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6">
-        <DesignacionesTable onEditModal={handleEditModal} />
+        <DesignacionesTable
+          onEditModal={handleEditModal}
+          onOpenImportModal={() => setIsImportModalOpen(true)}
+        />
       </main>
 
       {/* Mobile Floating Action Button (FAB) */}
@@ -178,6 +182,14 @@ function AppContent() {
           )}
           <span>{isSuperAdmin ? 'Salir Admin' : isAdmin ? 'Salir Profe' : 'Ingresar'}</span>
         </button>
+
+        <button
+          onClick={() => window.print()}
+          className="flex flex-col items-center gap-1 p-1 hover:text-slate-800 dark:hover:text-slate-200"
+        >
+          <Printer className="w-5 h-5 text-slate-500" />
+          <span>Imprimir</span>
+        </button>
       </nav>
 
       {/* Modals */}
@@ -235,7 +247,9 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <DesignacionesProvider>
-            <AppContent />
+            <ToastProvider>
+              <AppContent />
+            </ToastProvider>
           </DesignacionesProvider>
         </AuthProvider>
       </ThemeProvider>

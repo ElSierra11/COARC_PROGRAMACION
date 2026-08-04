@@ -347,6 +347,17 @@ export const DesignacionesProvider = ({ children }) => {
     return partidosClonados.length;
   };
 
+  const deleteJornada = (fechaIso) => {
+    const current = readDesignacionesLocal();
+    const toDelete = current.filter(d => (d.fecha_iso || selectedDateIso) === fechaIso);
+    const updated = current.filter(d => (d.fecha_iso || selectedDateIso) !== fechaIso);
+    saveDesignacionesLocal(updated);
+    pushToCloud(updated);
+    // Intentar eliminar del backend en segundo plano
+    toDelete.forEach(d => designacionesService.deleteDesignacion(d.id).catch(() => {}));
+    return toDelete.length;
+  };
+
   // ────────────────────────────────────────────────────────────────────
   // Árbitros personalizados
   // ────────────────────────────────────────────────────────────────────
@@ -522,6 +533,7 @@ export const DesignacionesProvider = ({ children }) => {
       updateDesignacion,
       deleteDesignacion,
       duplicarPartido,
+      deleteJornada,
       importarDesignaciones,
       duplicarJornada
     }}>

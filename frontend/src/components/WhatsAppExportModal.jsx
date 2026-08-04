@@ -44,11 +44,19 @@ export const WhatsAppExportModal = ({ isOpen, onClose }) => {
   const [copiedImage, setCopiedImage] = useState(false);
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [activeTab, setActiveTab] = useState('image'); // 'image' | 'text' | 'office'
+  const [currentPage, setCurrentPage] = useState(0);
+
+  const MATCHES_PER_PAGE = 8;
 
   if (!isOpen) return null;
 
   // Filtrar estrictamente por la fecha seleccionada
   const dateMatches = designaciones.filter(d => (d.fecha_iso || selectedDateIso) === selectedDateIso);
+
+  // Paginación: máximo 8 partidos por página de imagen
+  const totalPages = Math.max(1, Math.ceil(dateMatches.length / MATCHES_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages - 1);
+  const pageMatches = dateMatches.slice(safePage * MATCHES_PER_PAGE, (safePage + 1) * MATCHES_PER_PAGE);
 
   // Render text for WhatsApp
   const generateWhatsAppText = () => {
@@ -96,7 +104,8 @@ export const WhatsAppExportModal = ({ isOpen, onClose }) => {
   const handleDownloadJpg = async () => {
     setIsExportingImage(true);
     try {
-      await exportElementToJpg('whatsapp-preview-card', `Programacion_COARC_${selectedDateLabel.replace(/\s+/g, '_')}`);
+      const pageSuffix = totalPages > 1 ? `_Pag${safePage + 1}de${totalPages}` : '';
+      await exportElementToJpg('whatsapp-preview-card', `Programacion_COARC_${selectedDateLabel.replace(/\s+/g, '_')}${pageSuffix}`);
     } catch (err) {
       console.error('Error al descargar JPG:', err);
     } finally {
@@ -185,11 +194,38 @@ export const WhatsAppExportModal = ({ isOpen, onClose }) => {
           {/* TAB 1: IMAGEN JPG OFICIAL PARA WHATSAPP */}
           {activeTab === 'image' && (
             <div className="space-y-4">
-              <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-800 dark:text-blue-300">
-                <strong>Plantilla Oficial de Imagen COARC:</strong> Se adapta dinámicamente al número exacto de partidos ({dateMatches.length}) sin recortar texto ni mostrar barras de desplazamiento.
+              <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-800 dark:text-blue-300">
+                <span>
+                  <strong>Plantilla Oficial COARC:</strong> {dateMatches.length} partidos en total.
+                  {totalPages > 1 && <span className="ml-1 font-bold text-amber-700 dark:text-amber-300"> Se divide en {totalPages} páginas de {MATCHES_PER_PAGE} partidos máx. c/u.</span>}
+                </span>
               </div>
 
-              {/* VISTA PREVIA Y CONTENEDOR CAPTURABLE PARA IMAGEN JPG (SIN OVERFLOW / SIN SCROLLBARS) */}
+              {/* Controles de Página (si hay más de 8 partidos) */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 rounded-xl px-4 py-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                    disabled={safePage === 0}
+                    className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition"
+                  >
+                    Anterior
+                  </button>
+                  <span className="text-xs font-black text-slate-700 dark:text-slate-200">
+                    PÁGINA {safePage + 1} de {totalPages}
+                    <span className="ml-2 text-slate-500 font-normal">({pageMatches.length} partidos)</span>
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={safePage === totalPages - 1}
+                    className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition"
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              )}
+
+              {/* VISTA PREVIA Y CONTENEDOR CAPTURABLE PARA IMAGEN JPG */}
               <div className="overflow-x-auto pb-2">
                 <div
                   id="whatsapp-preview-card"
@@ -214,6 +250,11 @@ export const WhatsAppExportModal = ({ isOpen, onClose }) => {
                       <span className="px-3 py-1 bg-amber-500 text-slate-950 text-xs font-black rounded-lg uppercase shadow-sm inline-block">
                         Córdoba
                       </span>
+                      {totalPages > 1 && (
+                        <div className="mt-1 text-[10px] text-amber-300 font-bold">
+                          PÁG. {safePage + 1}/{totalPages}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -224,7 +265,10 @@ export const WhatsAppExportModal = ({ isOpen, onClose }) => {
                       <span>FECHA: {selectedDateLabel}</span>
                     </div>
                     <div className="bg-white/20 px-2.5 py-0.5 rounded-lg text-[11px] font-black uppercase">
-                      {dateMatches.length} PARTIDOS FILTRADOS
+                      {totalPages > 1
+                        ? `${pageMatches.length} PARTIDOS — PÁG ${safePage + 1}/${totalPages}`
+                        : `${dateMatches.length} PARTIDOS`
+                      }
                     </div>
                   </div>
 
@@ -247,7 +291,7 @@ export const WhatsAppExportModal = ({ isOpen, onClose }) => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 font-medium">
-                          {dateMatches.map((d, index) => {
+                          {pageMatches.map((d, index) => {
                             const itemNum = d.item || index + 1;
 
                             return (

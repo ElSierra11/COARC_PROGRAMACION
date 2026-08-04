@@ -98,6 +98,9 @@ export const cloudSyncService = {
     const pendingAt = Date.now();
     try { localStorage.setItem('coarc_local_pending_at', String(pendingAt)); } catch (e) {}
 
+    // Notificar UI: sync pendiente
+    try { window.dispatchEvent(new CustomEvent('coarc-sync', { detail: { status: 'pending' } })); } catch (e) {}
+
     try {
       const rawDesignaciones = Array.isArray(localState?.designaciones) ? localState.designaciones : [];
       const customArbitros = Array.isArray(localState?.customArbitros) ? localState.customArbitros : [];
@@ -145,12 +148,16 @@ export const cloudSyncService = {
       lastSuccessfulPushAt = Date.now();
       try { localStorage.removeItem('coarc_local_pending_at'); } catch (e) {}
 
+      // Notificar UI: sync exitoso
+      try { window.dispatchEvent(new CustomEvent('coarc-sync', { detail: { status: 'success' } })); } catch (e) {}
+
       console.log(`[CloudSync] Push exitoso: ${designaciones.length} partidos sincronizados (${payloadSizeKB.toFixed(1)} KB)`);
       return payload.data;
 
     } catch (error) {
       console.warn('[CloudSync] pushCloudData falló:', error?.message);
-      // El marcador de pendiente sigue activo — el pull no sobreescribirá los datos locales
+      // Notificar UI: sync error
+      try { window.dispatchEvent(new CustomEvent('coarc-sync', { detail: { status: 'error' } })); } catch (e) {}
       return null;
     } finally {
       pushInProgress = false;

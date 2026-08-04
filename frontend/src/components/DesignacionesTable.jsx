@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useDesignaciones } from '../context/DesignacionesContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { CronogramaGrid } from './CronogramaGrid';
-import { ImportarClonarModal } from './ImportarClonarModal';
 import { DisponibilidadModal } from './DisponibilidadModal';
 import { HonorariosModal } from './HonorariosModal';
+import { exportDesignacionesToExcel } from '../services/officeExportUtils';
 import {
   Search,
   MapPin,
@@ -27,10 +28,13 @@ import {
   Grid,
   List,
   DollarSign,
-  FileSpreadsheet
+  FileSpreadsheet,
+  AlertCircle,
+  X as XIcon,
+  Printer
 } from 'lucide-react';
 
-export const DesignacionesTable = ({ onEditModal }) => {
+export const DesignacionesTable = ({ onEditModal, onOpenImportModal }) => {
   const {
     designaciones,
     selectedDateIso,
@@ -45,52 +49,52 @@ export const DesignacionesTable = ({ onEditModal }) => {
     selectedMunicipio,
     setSelectedMunicipio,
     deleteDesignacion,
+    deleteJornada,
     updateDesignacion,
     arbitroStats
   } = useDesignaciones();
 
+  const { addToast } = useToast();
   const [selectedEstado, setSelectedEstado] = useState('');
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'grid'
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isDisponibilidadModalOpen, setIsDisponibilidadModalOpen] = useState(false);
   const [isHonorariosModalOpen, setIsHonorariosModalOpen] = useState(false);
+  // Estado de confirmación de borrado
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [showClearDayConfirm, setShowClearDayConfirm] = useState(false);
 
   const { isAdmin, requireAuth } = useAuth();
 
   const safeDesignaciones = Array.isArray(designaciones) ? designaciones : [];
 
-  // Instant client-side filter strictly by selected date, referee name, venue, tournament, municipio, and estado
-  const filteredDesignaciones = safeDesignaciones.filter(d => {
+  // Solo designaciones del día activo (base para filtros de cancha/torneo)
+  const desJornadaActiva = safeDesignaciones.filter(
+    d => (d.fecha_iso || selectedDateIso) === selectedDateIso
+  );
+
+  // Filtrado instantáneo del lado del cliente
+  const filteredDesignaciones = desJornadaActiva.filter(d => {
     if (!d) return false;
-    
-    // Filtrado estricto por fecha ISO seleccionada
-    const itemDateIso = d.fecha_iso || selectedDateIso;
-    if (selectedDateIso && itemDateIso !== selectedDateIso) {
-      return false;
-    }
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase().trim();
       const matchPrincipal = d.arbitro_principal?.toLowerCase().includes(q);
-      const matchAsst1 = d.asistente_1?.toLowerCase().includes(q);
-      const matchAsst2 = d.asistente_2?.toLowerCase().includes(q);
-      const matchEmerg = d.emergente?.toLowerCase().includes(q);
-      if (!matchPrincipal && !matchAsst1 && !matchAsst2 && !matchEmerg) {
+      const matchAsst1     = d.asistente_1?.toLowerCase().includes(q);
+      const matchAsst2     = d.asistente_2?.toLowerCase().includes(q);
+      const matchEmerg     = d.emergente?.toLowerCase().includes(q);
+      const matchPartido   = d.partido?.toLowerCase().includes(q);
+      const matchCancha    = d.cancha?.toLowerCase().includes(q);
+      const matchTorneo    = (d.torneo || d.categoria_torneo || '').toLowerCase().includes(q);
+      if (!matchPrincipal && !matchAsst1 && !matchAsst2 && !matchEmerg && !matchPartido && !matchCancha && !matchTorneo) {
         return false;
       }
     }
-    if (selectedCancha && d.cancha !== selectedCancha) {
-      return false;
-    }
-    if (selectedTorneo && d.torneo !== selectedTorneo) {
-      return false;
-    }
-    if (selectedMunicipio && (d.municipio || "MONTERÍA").toUpperCase() !== selectedMunicipio.toUpperCase()) {
-      return false;
-    }
-    if (selectedEstado && (d.estado || "PROGRAMADO").toUpperCase() !== selectedEstado.toUpperCase()) {
-      return false;
-    }
+
+    const torneoField = d.torneo || d.categoria_torneo || '';
+    if (selectedCancha  && d.cancha !== selectedCancha) return false;
+    if (selectedTorneo  && torneoField !== selectedTorneo) return false;
+    if (selectedMunicipio && (d.municipio || 'MONTERÍA').toUpperCase() !== selectedMunicipio.toUpperCase()) return false;
+    if (selectedEstado  && (d.estado || 'PROGRAMADO').toUpperCase() !== selectedEstado.toUpperCase()) return false;
     return true;
   });
 
@@ -100,7 +104,23 @@ export const DesignacionesTable = ({ onEditModal }) => {
       const currentIdx = states.indexOf(des.estado || 'PROGRAMADO');
       const nextState = states[(currentIdx + 1) % states.length];
       await updateDesignacion(des.id, { estado: nextState });
+      addToast(`Estado actualizado: ${nextState}`, 'info', 2500);
     }, 'Debes iniciar sesión como Coordinador Arbitral para cambiar el estado del partido.');
+  };
+
+  // Confirmación de borrado individual
+  const handleConfirmDelete = () => {
+    if (!pendingDeleteId) return;
+    deleteDesignacion(pendingDeleteId);
+    addToast('Partido eliminado correctamente.', 'success');
+    setPendingDeleteId(null);
+  };
+
+  // Confirmación de limpiar jornada completa
+  const handleConfirmClearDay = () => {
+    const count = deleteJornada(selectedDateIso);
+    addToast(`Se eliminaron ${count} partido(s) de la jornada ${selectedDateLabel}.`, 'warning');
+    setShowClearDayConfirm(false);
   };
 
   // Lista dinámica de municipios (Predeterminados + Creados en partidos + Agregados manualmente)
@@ -115,12 +135,16 @@ export const DesignacionesTable = ({ onEditModal }) => {
   });
 
   const safeCustomMunicipios = Array.isArray(customMunicipios) ? customMunicipios : [];
-  const defaultMunicipios = ["MONTERÍA", "CERETÉ", "LORICA", "PLANETA RICA", "SAHAGÚN"];
-  const designacionesMunicipios = safeDesignaciones.map(d => (d?.municipio || "MONTERÍA").toUpperCase());
+  const defaultMunicipios = ["MONTÉRÍA", "CERETÉ", "LORICA", "PLANETA RICA", "SAHAGÚN"];
+  const designacionesMunicipios = desJornadaActiva.map(d => (d?.municipio || "MONTÉRÍA").toUpperCase());
 
   const municipiosLista = Array.from(
     new Set([...defaultMunicipios, ...designacionesMunicipios, ...safeCustomMunicipios])
   ).filter(Boolean);
+
+  // Canchas y torneos solo del día activo
+  const uniqueCanchas = Array.from(new Set(desJornadaActiva.map(d => d.cancha))).filter(Boolean);
+  const uniqueTorneos = Array.from(new Set(desJornadaActiva.map(d => d.torneo || d.categoria_torneo))).filter(Boolean);
 
   const handleAddMunicipio = () => {
     requireAuth(() => {
@@ -137,18 +161,12 @@ export const DesignacionesTable = ({ onEditModal }) => {
     }, 'Para registrar nuevos municipios debes iniciar sesión con tus credenciales de Coordinador.');
   };
 
-  // Extract unique venues and tournaments for quick dropdown filters
-  const uniqueCanchas = Array.from(new Set(designaciones.map(d => d.cancha))).filter(Boolean);
-  const uniqueTorneos = Array.from(new Set(designaciones.map(d => d.torneo))).filter(Boolean);
-
-  // Helper to get referee total match count for workload badge
   const getRefereeMatchCount = (refereeName) => {
     if (!refereeName) return 0;
     const stat = arbitroStats.find(s => s.nombre.toUpperCase() === refereeName.toUpperCase());
     return stat ? stat.total_partidos : 0;
   };
 
-  // Helper to render workload pill
   const renderWorkloadBadge = (count) => {
     if (count <= 0) return null;
     let badgeColor = "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
@@ -165,13 +183,76 @@ export const DesignacionesTable = ({ onEditModal }) => {
   const sendIndividualWhatsApp = (e, refereeName, des) => {
     e.stopPropagation();
     if (!refereeName) return;
-    const msg = `Hola *${refereeName}*, la Corporación Arbitral COARC te notifica tu designación:\n\n• HORARIO: ${des.hora}\n• SEDE/CANCHA: ${des.cancha} (${(des.municipio || 'MONTERÍA').toUpperCase()})\n• TORNEO: ${des.torneo} | CATEGORÍA: ${des.categoria}\n\nFavor confirmar asistencia.`;
+    const msg = `Hola *${refereeName}*, la Corporación Arbitral COARC te notifica tu designación:\n\n• HORARIO: ${des.hora}\n• SEDE/CANCHA: ${des.cancha} (${(des.municipio || 'MONTÉRÍA').toUpperCase()})\n• TORNEO: ${des.torneo || des.categoria_torneo} | CATEGORÍA: ${des.categoria}\n\nFavor confirmar asistencia.`;
     const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank');
   };
 
+  const handleExportExcel = () => {
+    exportDesignacionesToExcel(filteredDesignaciones, selectedDateLabel);
+    addToast(`Excel exportado: ${filteredDesignaciones.length} partidos`, 'success');
+  };
+
   return (
     <div className="space-y-4 no-print">
+
+      {/* Confirmación de borrado individual */}
+      {pendingDeleteId && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800 rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 text-center space-y-4">
+            <div className="w-12 h-12 mx-auto bg-rose-100 dark:bg-rose-950 rounded-full flex items-center justify-center">
+              <AlertCircle className="w-6 h-6 text-rose-600" />
+            </div>
+            <h3 className="font-black text-slate-900 dark:text-white text-sm">Eliminar Partido</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Esta acción es permanente. ¿Confirmas eliminar este partido de la programación?
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => setPendingDeleteId(null)}
+                className="px-5 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="px-5 py-2 bg-rose-600 hover:rose-700 text-white font-bold text-xs rounded-xl transition"
+              >
+                Sí, Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmación de limpiar jornada */}
+      {showClearDayConfirm && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 text-center space-y-4">
+            <div className="w-12 h-12 mx-auto bg-amber-100 dark:bg-amber-950 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 text-amber-600" />
+            </div>
+            <h3 className="font-black text-slate-900 dark:text-white text-sm">Limpiar Jornada Completa</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Esto eliminará <strong className="text-rose-600">{desJornadaActiva.length} partidos</strong> de la fecha <strong>{selectedDateLabel}</strong>. La acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => setShowClearDayConfirm(false)}
+                className="px-5 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmClearDay}
+                className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition"
+              >
+                Sí, Limpiar Jornada
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Municipality Tabs / Clasificación por Ciudad */}
       <div className="bg-white dark:bg-slate-900 border border-blue-100 dark:border-slate-800 p-2 rounded-2xl shadow-sm overflow-x-auto flex items-center gap-1.5 scrollbar-none">
@@ -224,7 +305,7 @@ export const DesignacionesTable = ({ onEditModal }) => {
             <button
               type="button"
               onClick={() => requireAuth(
-                () => setIsImportModalOpen(true),
+                () => onOpenImportModal(),
                 'Debes iniciar sesión con las credenciales de Coordinador Arbitral para Importar Excel o Cargar Rápido.'
               )}
               className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
@@ -256,6 +337,32 @@ export const DesignacionesTable = ({ onEditModal }) => {
               <DollarSign className="w-4 h-4 text-slate-950" />
               <span>Tesorería / Honorarios</span>
             </button>
+
+            {/* Exportar Excel respetando filtros */}
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={filteredDesignaciones.length === 0}
+              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Exportar Excel ({filteredDesignaciones.length})</span>
+            </button>
+
+            {/* Limpiar jornada completa */}
+            {desJornadaActiva.length > 0 && (
+              <button
+                type="button"
+                onClick={() => requireAuth(
+                  () => setShowClearDayConfirm(true),
+                  'Debes iniciar sesión con las credenciales de Coordinador para limpiar la jornada.'
+                )}
+                className="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Limpiar Jornada</span>
+              </button>
+            )}
           </div>
 
           {/* View Switcher: Table vs Grid */}
@@ -285,15 +392,16 @@ export const DesignacionesTable = ({ onEditModal }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Search, Cancha, Torneo, Estado Filters */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {/* Real-time Referee Search Input */}
-          <div className="relative">
+          <div className="relative col-span-2 sm:col-span-1">
             <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por Árbitro..."
+              placeholder="Buscar árbitro, partido, cancha..."
               className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800 dark:text-slate-200 placeholder-slate-400"
             />
           </div>
@@ -327,12 +435,28 @@ export const DesignacionesTable = ({ onEditModal }) => {
               ))}
             </select>
           </div>
+
+          {/* Estado Filter (nuevo) */}
+          <div className="relative">
+            <Filter className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+            <select
+              value={selectedEstado}
+              onChange={(e) => setSelectedEstado(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800 dark:text-slate-200 appearance-none"
+            >
+              <option value="">Todos los Estados</option>
+              <option value="PROGRAMADO">PROGRAMADO</option>
+              <option value="CONFIRMADO">CONFIRMADO</option>
+              <option value="EN_JUEGO">EN JUEGO</option>
+              <option value="FINALIZADO">FINALIZADO</option>
+            </select>
+          </div>
         </div>
 
         {/* Filter Stats & Reset */}
         <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800 text-[11px]">
           <span className="font-semibold text-slate-500 dark:text-slate-400">
-            Mostrando <strong className="text-blue-700 dark:text-blue-400">{filteredDesignaciones.length}</strong> partidos
+            Mostrando <strong className="text-blue-700 dark:text-blue-400">{filteredDesignaciones.length}</strong> de <strong>{desJornadaActiva.length}</strong> partidos del día
           </span>
 
           {(searchQuery || selectedCancha || selectedTorneo || selectedMunicipio || selectedEstado) && (
@@ -585,7 +709,7 @@ export const DesignacionesTable = ({ onEditModal }) => {
                       </button>
                       <button
                         onClick={() => requireAuth(
-                          () => deleteDesignacion(des.id),
+                          () => setPendingDeleteId(des.id),
                           'Debes iniciar sesión con tus credenciales de Coordinador Arbitral para eliminar este partido.'
                         )}
                         className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-bold rounded-lg flex items-center gap-1 cursor-pointer"
@@ -807,7 +931,7 @@ export const DesignacionesTable = ({ onEditModal }) => {
                             </button>
                             <button
                               onClick={() => requireAuth(
-                                () => deleteDesignacion(des.id),
+                                () => setPendingDeleteId(des.id),
                                 'Debes iniciar sesión con tus credenciales de Coordinador Arbitral para eliminar este partido.'
                               )}
                               className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
@@ -829,11 +953,6 @@ export const DesignacionesTable = ({ onEditModal }) => {
       </div>
 
       {/* Modales de Herramientas de Programación */}
-      <ImportarClonarModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-      />
-
       <DisponibilidadModal
         isOpen={isDisponibilidadModalOpen}
         onClose={() => setIsDisponibilidadModalOpen(false)}

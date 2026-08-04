@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CoarcLogo } from './CoarcLogo';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -18,7 +18,11 @@ import {
   X,
   Shield,
   DollarSign,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Cloud,
+  CloudOff,
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 
 export const Navbar = ({
@@ -44,6 +48,26 @@ export const Navbar = ({
     setSelectedMunicipio
   } = useDesignaciones();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'pending' | 'success' | 'error'
+
+  // Escuchar eventos de sincronización desde cloudSyncService
+  useEffect(() => {
+    let successTimer;
+    const handleSyncEvent = (e) => {
+      const { status } = e.detail || {};
+      setSyncStatus(status);
+      if (status === 'success') {
+        // Volver a idle después de 3 segundos
+        clearTimeout(successTimer);
+        successTimer = setTimeout(() => setSyncStatus('idle'), 3000);
+      }
+    };
+    window.addEventListener('coarc-sync', handleSyncEvent);
+    return () => {
+      window.removeEventListener('coarc-sync', handleSyncEvent);
+      clearTimeout(successTimer);
+    };
+  }, []);
 
   const handleLogoClick = () => {
     setSearchQuery('');
@@ -97,6 +121,24 @@ export const Navbar = ({
         
         {/* Logo */}
         <CoarcLogo onClick={handleLogoClick} />
+
+        {/* Indicador de Sincronización con la Nube */}
+        {syncStatus !== 'idle' && (
+          <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all ${
+            syncStatus === 'pending'
+              ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300'
+              : syncStatus === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
+              : 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300'
+          }`}>
+            {syncStatus === 'pending' && <Loader2 className="w-3 h-3 animate-spin" />}
+            {syncStatus === 'success' && <CheckCircle2 className="w-3 h-3" />}
+            {syncStatus === 'error'   && <CloudOff className="w-3 h-3" />}
+            <span>
+              {syncStatus === 'pending' ? 'Sincronizando...' : syncStatus === 'success' ? 'Nube Sincronizada' : 'Sin conexión'}
+            </span>
+          </div>
+        )}
 
         {/* Date Selector Banner & Calendar Modal Trigger */}
         <div className="hidden md:flex items-center gap-2 bg-blue-50 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-blue-100 dark:border-slate-700 text-slate-800 dark:text-slate-200">
