@@ -32,6 +32,8 @@ import {
 export const DesignacionesTable = ({ onEditModal }) => {
   const {
     designaciones,
+    selectedDateIso,
+    selectedDateLabel,
     loading,
     searchQuery,
     setSearchQuery,
@@ -41,7 +43,6 @@ export const DesignacionesTable = ({ onEditModal }) => {
     setSelectedTorneo,
     selectedMunicipio,
     setSelectedMunicipio,
-    selectedDateLabel,
     deleteDesignacion,
     updateDesignacion,
     arbitroStats
@@ -57,9 +58,16 @@ export const DesignacionesTable = ({ onEditModal }) => {
 
   const safeDesignaciones = Array.isArray(designaciones) ? designaciones : [];
 
-  // Instant client-side filter by referee name, venue, tournament, municipio, and estado
+  // Instant client-side filter strictly by selected date, referee name, venue, tournament, municipio, and estado
   const filteredDesignaciones = safeDesignaciones.filter(d => {
     if (!d) return false;
+    
+    // Filtrado estricto por fecha ISO seleccionada
+    const itemDateIso = d.fecha_iso || selectedDateIso;
+    if (selectedDateIso && itemDateIso !== selectedDateIso) {
+      return false;
+    }
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase().trim();
       const matchPrincipal = d.arbitro_principal?.toLowerCase().includes(q);

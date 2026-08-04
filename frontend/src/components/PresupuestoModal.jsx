@@ -113,9 +113,7 @@ export const PresupuestoModal = ({ isOpen, onClose }) => {
     notas: ''
   });
 
-  if (!isOpen) return null;
-
-  // Cálculos de Totales y Métricas
+  // TODOS LOS HOOKS DEBEN EJECUTARSE INCONDICIONALMENTE (Regla de Hooks de React)
   const resumen = useMemo(() => {
     let totalIngresos = 0;
     let totalEgresos = 0;
@@ -159,6 +157,9 @@ export const PresupuestoModal = ({ isOpen, onClose }) => {
       return true;
     });
   }, [items, filterTipo, filterEstado, searchQuery]);
+
+  // AHORA SÍ: Retorno temprano si no está abierto (después de ejecutar todos los hooks)
+  if (!isOpen) return null;
 
   const handleSaveItem = (e) => {
     e.preventDefault();
