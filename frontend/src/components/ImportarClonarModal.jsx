@@ -326,36 +326,75 @@ export const ImportarClonarModal = ({ isOpen, onClose }) => {
           {(activeTab === 'excel' || activeTab === 'text') && parsedItems.length > 0 && (
             <div className="space-y-2 border-t border-slate-200 dark:border-slate-800 pt-3">
               <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                <span>Vista previa ({parsedItems.length} partidos detectados)</span>
+                <span>Vista Previa — {parsedItems.length} partidos detectados</span>
                 <span className="text-[11px] font-mono text-blue-600 dark:text-blue-400">Fecha destino: {selectedDateLabel}</span>
               </h4>
 
-              <div className="overflow-x-auto max-h-48 border border-slate-200 dark:border-slate-800 rounded-xl">
-                <table className="w-full text-[11px] text-left">
-                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold sticky top-0">
+              <div className="overflow-x-auto max-h-64 border border-slate-200 dark:border-slate-800 rounded-xl">
+                <table className="w-full text-[11px] text-left min-w-[860px]">
+                  <thead className="bg-amber-500 text-slate-950 font-black sticky top-0">
                     <tr>
-                      <th className="p-2">Hora</th>
-                      <th className="p-2">Cancha</th>
-                      <th className="p-2">Torneo</th>
-                      <th className="p-2">Partido</th>
-                      <th className="p-2">Principal</th>
+                      <th className="p-2 text-center border-r border-amber-600 w-8">N°</th>
+                      <th className="p-2 border-r border-amber-600">Hora</th>
+                      <th className="p-2 border-r border-amber-600">Cancha / Escenario</th>
+                      <th className="p-2 border-r border-amber-600">Torneo / Categoría</th>
+                      <th className="p-2 border-r border-amber-600">Encuentro (Partido)</th>
+                      <th className="p-2 border-r border-amber-600">Municipio</th>
+                      <th className="p-2 border-r border-amber-600 bg-amber-600/20">Árbitro Principal</th>
+                      <th className="p-2 border-r border-amber-600 bg-rose-500/20">Asistente 1</th>
+                      <th className="p-2 border-r border-amber-600 bg-blue-500/20">Asistente 2</th>
+                      <th className="p-2 border-r border-amber-600 bg-emerald-500/20">Emergente</th>
+                      <th className="p-2">Estado</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                     {parsedItems.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-850">
-                        <td className="p-2 font-mono font-bold text-blue-600 dark:text-blue-400">{item.hora}</td>
-                        <td className="p-2">{item.cancha}</td>
-                        <td className="p-2 font-medium">{item.torneo}</td>
-                        <td className="p-2 font-semibold">{item.partido}</td>
-                        <td className="p-2">{item.arbitro_principal || <span className="text-slate-400 italic">Sin asignar</span>}</td>
+                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-950'}>
+                        <td className="p-2 text-center font-bold text-slate-600 border-r border-slate-200 dark:border-slate-800">{item.id_temp}</td>
+                        <td className="p-2 font-mono font-bold text-blue-700 dark:text-blue-400 border-r border-slate-200 dark:border-slate-800 whitespace-nowrap">{item.hora}</td>
+                        <td className="p-2 font-semibold uppercase border-r border-slate-200 dark:border-slate-800">{item.cancha}</td>
+                        <td className="p-2 text-slate-600 dark:text-slate-400 border-r border-slate-200 dark:border-slate-800">{item.torneo}</td>
+                        <td className="p-2 font-bold border-r border-slate-200 dark:border-slate-800">{item.partido}</td>
+                        <td className="p-2 text-slate-500 border-r border-slate-200 dark:border-slate-800 whitespace-nowrap">{item.municipio}</td>
+                        <td className="p-2 border-r border-slate-200 dark:border-slate-800">
+                          {item.arbitro_principal
+                            ? <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 rounded font-bold uppercase">{item.arbitro_principal}</span>
+                            : <span className="text-slate-400 italic">Sin asignar</span>
+                          }
+                        </td>
+                        <td className="p-2 border-r border-slate-200 dark:border-slate-800">
+                          {item.asistente_1
+                            ? <span className="px-1.5 py-0.5 bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 rounded font-bold uppercase">{item.asistente_1}</span>
+                            : <span className="text-slate-300 dark:text-slate-600">—</span>
+                          }
+                        </td>
+                        <td className="p-2 border-r border-slate-200 dark:border-slate-800">
+                          {item.asistente_2
+                            ? <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 rounded font-bold uppercase">{item.asistente_2}</span>
+                            : <span className="text-slate-300 dark:text-slate-600">—</span>
+                          }
+                        </td>
+                        <td className="p-2 border-r border-slate-200 dark:border-slate-800">
+                          {item.emergente
+                            ? <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 rounded font-bold uppercase">{item.emergente}</span>
+                            : <span className="text-slate-300 dark:text-slate-600">—</span>
+                          }
+                        </td>
+                        <td className="p-2">
+                          <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded text-[10px] font-bold uppercase">
+                            {item.estado || 'PROGRAMADO'}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              <div className="pt-2 flex justify-end">
+              <div className="pt-2 flex justify-between items-center">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Se importarán a la fecha: <strong className="text-blue-600 dark:text-blue-400">{selectedDateLabel}</strong>
+                </p>
                 <button
                   type="button"
                   onClick={handleExecuteImport}
@@ -367,6 +406,7 @@ export const ImportarClonarModal = ({ isOpen, onClose }) => {
               </div>
             </div>
           )}
+
 
           {/* TAB 3: DUPLICAR JORNADA */}
           {activeTab === 'clone' && (

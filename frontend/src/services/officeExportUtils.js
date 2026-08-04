@@ -27,14 +27,26 @@ export const parseExcelFile = (file) => {
         const results = [];
         let headerRowIndex = -1;
 
-        // Buscar la fila de cabecera de la tabla
-        for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
+        // Buscar fila de cabecera detectando palabras clave
+        for (let i = 0; i < Math.min(jsonData.length, 15); i++) {
           const rowStr = jsonData[i].join(' ').toLowerCase();
-          if (rowStr.includes('cancha') || rowStr.includes('partido') || rowStr.includes('hora') || rowStr.includes('árbitro') || rowStr.includes('arbitro')) {
+          if (rowStr.includes('cancha') || rowStr.includes('partido') || rowStr.includes('hora') || rowStr.includes('arbitro') || rowStr.includes('encuentro')) {
             headerRowIndex = i;
             break;
           }
         }
+
+        // Formato COARC exportado:
+        //   A=N°, B=Hora, C=Cancha/Escenario, D=Torneo/Categoria, E=Encuentro(Partido),
+        //   F=Municipio, G=Arbitro Principal, H=Asistente 1, I=Asistente 2,
+        //   J=Cuarto/Emergente, K=Estado
+        // Detectar si la columna 0 es N° para ajustar el offset
+        const headerRow = headerRowIndex >= 0 ? jsonData[headerRowIndex] : [];
+        const col0Header = String(headerRow[0] || '').toLowerCase().trim();
+        const col0isNum = col0Header === 'n°' || col0Header === 'nro' || col0Header === '#'
+          || col0Header === 'item' || col0Header === 'no' || col0Header === 'n'
+          || col0Header === '';
+        const off = col0isNum ? 1 : 0;
 
         const startRow = headerRowIndex >= 0 ? headerRowIndex + 1 : 0;
 
@@ -42,30 +54,36 @@ export const parseExcelFile = (file) => {
           const row = jsonData[i];
           if (!row || row.every(val => val === '' || val === null || val === undefined)) continue;
 
-          // Mapeo inteligente por posición o nombre de columna
-          const hora = String(row[0] || '08:00 AM').trim();
-          const cancha = String(row[1] || 'CANCHA 1').trim().toUpperCase();
-          const torneo = String(row[2] || 'TORNEO LOCAL').trim().toUpperCase();
-          const partido = String(row[3] || 'EQUIPO A VS EQUIPO B').trim().toUpperCase();
-          const municipio = String(row[4] || 'MONTERÍA').trim().toUpperCase();
-          const principal = String(row[5] || '').trim().toUpperCase();
-          const a1 = String(row[6] || '').trim().toUpperCase();
-          const a2 = String(row[7] || '').trim().toUpperCase();
+          // Mapeo alineado al export COARC (con offset si hay columna N°)
+          const hora      = String(row[0 + off] || '08:00 AM').trim();
+          const cancha    = String(row[1 + off] || 'CANCHA 1').trim().toUpperCase();
+          const torneo    = String(row[2 + off] || 'TORNEO LOCAL').trim().toUpperCase();
+          const partido   = String(row[3 + off] || 'ENCUENTRO').trim().toUpperCase();
+          const municipio = String(row[4 + off] || 'MONTERIA').trim().toUpperCase();
+          const principal = String(row[5 + off] || '').trim().toUpperCase();
+          const a1        = String(row[6 + off] || '').trim().toUpperCase();
+          const a2        = String(row[7 + off] || '').trim().toUpperCase();
+          const emergente = String(row[8 + off] || '').trim().toUpperCase();
+          const estado    = String(row[9 + off] || 'PROGRAMADO').trim().toUpperCase();
+
+          // Ignorar filas donde todos los campos principales son vacíos o guiones
+          const isEmpty = [hora, cancha, partido].every(v => v === '' || v === '-');
+          if (isEmpty) continue;
 
           results.push({
-            id_temp: i + 1,
+            id_temp: results.length + 1,
             hora,
             cancha,
             torneo,
             categoria_torneo: torneo,
             partido,
             municipio,
-            arbitro_principal: principal,
-            asistente_1: a1,
-            asistente_2: a2,
-            emergente: '',
+            arbitro_principal: principal === '-' ? '' : principal,
+            asistente_1: a1 === '-' ? '' : a1,
+            asistente_2: a2 === '-' ? '' : a2,
+            emergente: emergente === '-' ? '' : emergente,
             observaciones: '',
-            estado: 'PROGRAMADO'
+            estado: estado || 'PROGRAMADO'
           });
         }
 
