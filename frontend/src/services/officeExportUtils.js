@@ -1,9 +1,64 @@
 import * as XLSX from 'xlsx';
 
 /**
+ * Convierte formatos de fecha/hora de Excel (Date objects, seriales numéricos o Strings ISO/1899)
+ * en horas limpias formateadas en español (ej: "7:30 a. m." o "08:00 AM").
+ */
+const formatExcelTime = (val) => {
+  if (val === undefined || val === null || val === '') return '08:00 AM';
+
+  // Si ya es una instancia de Date de JavaScript (generada por SheetJS cellDates: true)
+  if (val instanceof Date) {
+    let h = val.getHours();
+    const m = val.getMinutes();
+    const ampm = h >= 12 ? 'p. m.' : 'a. m.';
+    h = h % 12;
+    h = h ? h : 12;
+    const minStr = m < 10 ? `0${m}` : `${m}`;
+    return `${h}:${minStr} ${ampm}`;
+  }
+
+  const str = String(val).trim();
+
+  // Si contiene formato Date estandar en ingles (ej: "Sat Dec 30 1899 07:30:00 GMT...")
+  if (str.includes('GMT') || str.includes('1899') || str.includes('Dec') || str.includes('Jan') || str.includes('07:30:00')) {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      let h = d.getHours();
+      const m = d.getMinutes();
+      const ampm = h >= 12 ? 'p. m.' : 'a. m.';
+      h = h % 12;
+      h = h ? h : 12;
+      const minStr = m < 10 ? `0${m}` : `${m}`;
+      return `${h}:${minStr} ${ampm}`;
+    }
+  }
+
+  // Si es un número decimal de Excel (ej: 0.3125 representa 07:30 AM)
+  const num = Number(str);
+  if (!isNaN(num) && num > 0 && num < 1) {
+    const totalMinutes = Math.round(num * 24 * 60);
+    let h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    const ampm = h >= 12 ? 'p. m.' : 'a. m.';
+    h = h % 12;
+    h = h ? h : 12;
+    const minStr = m < 10 ? `0${m}` : `${m}`;
+    return `${h}:${minStr} ${ampm}`;
+  }
+
+  // Si es un número grande de valor monetario (ej: 795000, 540000), no es hora
+  if (!isNaN(num) && num >= 1000) {
+    return '08:00 AM';
+  }
+
+  return str;
+};
+
+/**
  * Parsea un archivo de Excel (.xlsx, .xls) o CSV y extrae la lista de partidos
  * Evaluando únicamente los campos esenciales: Árbitros (Principal, A1, A2, Emergente),
- * Hora, Cancha, Partido, Categoría y Municipio, ignorando columnas innecesarias.
+ * Hora, Cancha, Partido, Categoría y Municipio, e ignorando tablas financieras / de saldo al final.
  * 
  * @param {File} file - Archivo seleccionado por el usuario
  * @returns {Promise<Array>} Lista de objetos de partidos parseados
@@ -105,24 +160,48 @@ export const parseExcelFile = (file) => {
           const row = jsonData[i];
           if (!row || row.every(val => val === '' || val === null || val === undefined)) continue;
 
+          // Convertir la fila completa a texto para detectar tablas de resumen financiero o saldos
+          const fullRowText = row.map(c => String(c || '').toLowerCase()).join(' ');
+
+          // Detectar e ignorar filas financieras / resumen de liquidación al final del Excel
+          if (
+            fullRowText.includes('recaudo') ||
+            fullRowText.includes('saldo') ||
+            fullRowText.includes('pago arbitraje') ||
+            fullRowText.includes('gestion de cobro') ||
+            fullRowText.includes('coordinacion') ||
+            fullRowText.includes('total') ||
+            fullRowText.includes('backup')
+          ) {
+            continue;
+          }
+
           // Extraer valores de celda strictly evaluados
           const modVal      = colMap.mod >= 0 ? String(row[colMap.mod] || '').trim().toUpperCase() : '';
-          const arbitroVal  = (colMap.principal >= 0 ? String(row[colMap.principal] || '') : (colMap.arbitro >= 0 ? String(row[colMap.arbitro] || '') : '')).trim().toUpperCase();
+          const arbitroRaw  = (colMap.principal >= 0 ? row[colMap.principal] : (colMap.arbitro >= 0 ? row[colMap.arbitro] : ''));
+          const arbitroVal  = String(arbitroRaw || '').trim().toUpperCase();
           const a1Val       = colMap.a1 >= 0 ? String(row[colMap.a1] || '').trim().toUpperCase() : '';
           const a2Val       = colMap.a2 >= 0 ? String(row[colMap.a2] || '').trim().toUpperCase() : '';
           const emVal       = colMap.emergente >= 0 ? String(row[colMap.emergente] || '').trim().toUpperCase() : '';
-          const horaVal     = colMap.hora >= 0 ? String(row[colMap.hora] || '').trim() : '';
+
+          // Formatear y limpiar hora
+          const rawHora     = colMap.hora >= 0 ? row[colMap.hora] : '';
+          const horaClean   = formatExcelTime(rawHora);
+
           const canchaVal   = colMap.cancha >= 0 ? String(row[colMap.cancha] || '').trim().toUpperCase() : '';
           const partidoVal  = colMap.partido >= 0 ? String(row[colMap.partido] || '').trim().toUpperCase() : '';
           const catVal      = colMap.categoria >= 0 ? String(row[colMap.categoria] || '').trim().toUpperCase() : '';
           const munVal      = colMap.municipio >= 0 ? String(row[colMap.municipio] || '').trim().toUpperCase() : 'MONTERÍA';
           const estadoVal   = colMap.estado >= 0 ? String(row[colMap.estado] || '').trim().toUpperCase() : 'PROGRAMADO';
 
-          // Omitir filas vacías de datos esenciales
-          if (!horaVal && !canchaVal && !partidoVal && !arbitroVal) continue;
+          // Omitir filas sin datos esenciales o si el nombre del árbitro / partido es una cifra numérica alta de dinero
+          if (!canchaVal && !partidoVal && !arbitroVal) continue;
+
+          // Ignorar si el partido es una cifra de dinero de resumen (ej: "1360000", "950000")
+          if (!isNaN(Number(partidoVal)) && Number(partidoVal) > 10000) continue;
 
           // Limpiar valores vacíos o guiones
-          const cleanRef = (val) => (val === '-' || val === 'N/A' || val === 'NONE' || val === 'SIN ASIGNAR') ? '' : val;
+          const cleanRef = (val) => (val === '-' || val === 'N/A' || val === 'NONE' || val === 'SIN ASIGNAR' || !isNaN(Number(val))) ? '' : val;
 
           const refPrincipal = cleanRef(arbitroVal);
           const cleanA1 = cleanRef(a1Val);
@@ -133,7 +212,7 @@ export const parseExcelFile = (file) => {
           if (cleanA1 || cleanA2 || cleanEm || (colMap.a1 >= 0 && colMap.principal >= 0)) {
             results.push({
               id_temp: results.length + 1,
-              hora: horaVal || '08:00 AM',
+              hora: horaClean,
               cancha: canchaVal || 'CANCHA 1',
               torneo: catVal || 'TORNEO LOCAL',
               categoria: catVal || 'TORNEO LOCAL',
@@ -153,19 +232,19 @@ export const parseExcelFile = (file) => {
 
           // Si el formato es por filas verticales (donde col MOD. = ARBITRO, A1, A2, EMERG)
           if (modVal.includes('A1') || modVal.includes('ASISTENTE 1') || modVal.includes('ASIST 1')) {
-            if (currentMatchGroup && currentMatchGroup.hora === horaVal && currentMatchGroup.cancha === canchaVal) {
+            if (currentMatchGroup && currentMatchGroup.hora === horaClean && currentMatchGroup.cancha === canchaVal) {
               currentMatchGroup.asistente_1 = refPrincipal;
               currentMatchGroup.es_cuadra = true;
               continue;
             }
           } else if (modVal.includes('A2') || modVal.includes('ASISTENTE 2') || modVal.includes('ASIST 2')) {
-            if (currentMatchGroup && currentMatchGroup.hora === horaVal && currentMatchGroup.cancha === canchaVal) {
+            if (currentMatchGroup && currentMatchGroup.hora === horaClean && currentMatchGroup.cancha === canchaVal) {
               currentMatchGroup.asistente_2 = refPrincipal;
               currentMatchGroup.es_cuadra = true;
               continue;
             }
           } else if (modVal.includes('EMERG') || modVal.includes('CUARTO') || modVal.includes('4TO')) {
-            if (currentMatchGroup && currentMatchGroup.hora === horaVal && currentMatchGroup.cancha === canchaVal) {
+            if (currentMatchGroup && currentMatchGroup.hora === horaClean && currentMatchGroup.cancha === canchaVal) {
               currentMatchGroup.emergente = refPrincipal;
               currentMatchGroup.es_cuadra = true;
               continue;
@@ -175,7 +254,7 @@ export const parseExcelFile = (file) => {
           // Si es un nuevo partido individual
           const newMatch = {
             id_temp: results.length + 1,
-            hora: horaVal || '08:00 AM',
+            hora: horaClean,
             cancha: canchaVal || 'CANCHA 1',
             torneo: catVal || 'TORNEO LOCAL',
             categoria: catVal || 'TORNEO LOCAL',

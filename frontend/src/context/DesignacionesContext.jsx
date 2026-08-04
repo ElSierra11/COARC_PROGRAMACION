@@ -104,10 +104,13 @@ export const DesignacionesProvider = ({ children }) => {
   // FETCH Y SINCRONIZACIÓN DESDE LA NUBE (La Nube es la Fuente de la Verdad)
   // ────────────────────────────────────────────────────────────────────
   const pullFromCloud = async () => {
+    // Si hay datos locales pendientes de sincronizar que son más recientes,
+    // el propio cloudSyncService retornará null y no sobreescribiremos los datos locales.
     const cloudData = await cloudSyncService.fetchCloudData();
     if (!cloudData) return;
 
-    if (Array.isArray(cloudData.designaciones)) {
+    if (Array.isArray(cloudData.designaciones) && cloudData.designaciones.length > 0) {
+      // Solo actualizar si la nube tiene datos (no sobreescribir con lista vacía)
       saveDesignacionesLocal(cloudData.designaciones);
     }
 
@@ -269,11 +272,46 @@ export const DesignacionesProvider = ({ children }) => {
     });
 
     const updated = [...current, ...creados];
-    saveDesignacionesLocal(updated);
-    pushToCloud(updated);
 
+    // PASO 1: Guardar en localStorage INMEDIATAMENTE (nunca se pierden los datos)
+    saveDesignacionesLocal(updated);
+
+    // PASO 2: Marcar como pendiente local antes del push asíncrono
+    try { localStorage.setItem('coarc_local_pending_at', String(baseTime)); } catch (e) {}
+
+    // PASO 3: Push a la nube de forma asíncrona con reintentos para no bloquear la UI
+    const tryPushWithRetry = async (retries = 3) => {
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          // Re-leer desde localStorage por si cambió algo durante el intento
+          const latestData = readDesignacionesLocal();
+          let freshCustomArbitros = [];
+          let freshDisponibilidades = {};
+          let freshPagosState = {};
+          try { freshCustomArbitros = JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'); } catch (e) {}
+          try { freshDisponibilidades = JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'); } catch (e) {}
+          try { freshPagosState = JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}'); } catch (e) {}
+
+          await cloudSyncService.pushCloudData({
+            designaciones: latestData,
+            customArbitros: freshCustomArbitros,
+            disponibilidades: freshDisponibilidades,
+            pagosState: freshPagosState
+          });
+          console.log(`[Import] Push a la nube exitoso en intento ${attempt}`);
+          return;
+        } catch (err) {
+          console.warn(`[Import] Push intento ${attempt} falló:`, err?.message);
+          if (attempt < retries) await new Promise(res => setTimeout(res, 2000 * attempt));
+        }
+      }
+      console.warn('[Import] No se pudo sincronizar a la nube. Datos seguros en localStorage.');
+    };
+
+    tryPushWithRetry();
+
+    // PASO 4: Auto-registrar árbitros y persistir en backend en segundo plano
     creados.forEach(d => {
-      // Auto-registrar árbitros de la terna
       if (d.arbitro_principal && d.arbitro_principal !== 'SIN ASIGNAR') autoRegisterArbitro(d.arbitro_principal);
       if (d.asistente_1) autoRegisterArbitro(d.asistente_1);
       if (d.asistente_2) autoRegisterArbitro(d.asistente_2);
