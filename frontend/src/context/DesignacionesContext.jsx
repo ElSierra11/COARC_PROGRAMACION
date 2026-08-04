@@ -5,7 +5,6 @@ import { cloudSyncService } from '../services/cloudSyncService';
 const DesignacionesContext = createContext();
 
 export const DesignacionesProvider = ({ children }) => {
-  // Bug #7 fix: usar la fecha actual del sistema en lugar de una fecha hardcodeada
   const [selectedDateIso, setSelectedDateIso] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedDateLabel, setSelectedDateLabel] = useState(() => {
     const d = new Date();
@@ -15,7 +14,7 @@ export const DesignacionesProvider = ({ children }) => {
   });
 
   // ────────────────────────────────────────────────────────────────────
-  // Estado inicial desde localStorage
+  // Estado inicial desde localStorage (Cache rápida mientras conecta a la nube)
   // ────────────────────────────────────────────────────────────────────
   const [designaciones, setDesignaciones] = useState(() => {
     try {
@@ -30,9 +29,7 @@ export const DesignacionesProvider = ({ children }) => {
       const saved = localStorage.getItem('coarc_custom_arbitros');
       const parsed = saved ? JSON.parse(saved) : [];
       if (!Array.isArray(parsed)) return [];
-      // Deduplicar al cargar: normalizar a mayúsculas y eliminar duplicados del localStorage viejo
-      const deduped = Array.from(new Set(parsed.map(n => n?.trim().toUpperCase()).filter(Boolean)));
-      return deduped;
+      return Array.from(new Set(parsed.map(n => n?.trim().toUpperCase()).filter(Boolean)));
     } catch (e) { return []; }
   });
 
@@ -75,34 +72,9 @@ export const DesignacionesProvider = ({ children }) => {
   };
 
   // ────────────────────────────────────────────────────────────────────
-  // Helpers para rastrear IDs eliminados — evita que el cloud sync los restaure
-  // ────────────────────────────────────────────────────────────────────
-  const getDeletedIds = () => {
-    try {
-      const raw = localStorage.getItem('coarc_deleted_ids');
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-  };
-
-  const addDeletedId = (id) => {
-    const ids = getDeletedIds();
-    const idStr = String(id);
-    if (!ids.includes(idStr)) {
-      ids.push(idStr);
-      // Mantener solo los últimos 500 IDs eliminados para no crecer indefinidamente
-      const trimmed = ids.slice(-500);
-      try { localStorage.setItem('coarc_deleted_ids', JSON.stringify(trimmed)); } catch (e) {}
-    }
-  };
-
-  // ────────────────────────────────────────────────────────────────────
-  // PUSH A LA NUBE
-  // Siempre pasa la lista ACTUALIZADA directamente. Nunca lee del estado React
-  // (que puede ser stale). Lee customArbitros/disponibilidades/pagos de
-  // localStorage para asegurarse de tener el valor más reciente.
+  // PUSH A LA NUBE (Sincronización instantánea)
   // ────────────────────────────────────────────────────────────────────
   const pushToCloud = (updatedDesignaciones) => {
-    // Leer los demás datos de localStorage (siempre frescos)
     let freshCustomArbitros = [];
     let freshDisponibilidades = {};
     let freshPagosState = {};
@@ -120,7 +92,6 @@ export const DesignacionesProvider = ({ children }) => {
       freshPagosState = raw ? JSON.parse(raw) : {};
     } catch (e) {}
 
-    // El cloudSyncService se encarga del merge y del mutex
     cloudSyncService.pushCloudData({
       designaciones: updatedDesignaciones,
       customArbitros: freshCustomArbitros,
@@ -129,95 +100,47 @@ export const DesignacionesProvider = ({ children }) => {
     });
   };
 
-  // Helper para fusionar listas de partidos sin perder ninguno
-  // Respeta los IDs eliminados localmente para que el cloud no los restaure
-  const mergeDesignaciones = (localArr = [], cloudArr = []) => {
-    const deletedIds = new Set(getDeletedIds().map(String));
-    const map = new Map();
-
-    localArr.forEach(item => {
-      if (item && item.id && !deletedIds.has(String(item.id))) {
-        map.set(String(item.id), item);
-      }
-    });
-
-    cloudArr.forEach(item => {
-      if (item && item.id) {
-        const key = String(item.id);
-        if (deletedIds.has(key)) return; // Este ID fue eliminado localmente → ignorar
-        const existing = map.get(key);
-        if (!existing) {
-          map.set(key, item);
-        } else {
-          const existingTime = existing.updatedAt || 0;
-          const cloudTime = item.updatedAt || 0;
-          if (cloudTime >= existingTime) {
-            map.set(key, item);
-          }
-        }
-      }
-    });
-
-    const merged = Array.from(map.values());
-    merged.sort((a, b) => (a.item || 0) - (b.item || 0) || (a.id || 0) - (b.id || 0));
-    return merged;
-  };
-
   // ────────────────────────────────────────────────────────────────────
-  // FETCH Y MERGE DESDE LA NUBE
+  // FETCH Y SINCRONIZACIÓN DESDE LA NUBE (Fuente de la Verdad)
   // ────────────────────────────────────────────────────────────────────
   const pullFromCloud = async () => {
     const cloudData = await cloudSyncService.fetchCloudData();
-    if (!cloudData) return; // Si falla la red, conserva el estado local sin romper nada
-
-    const localList = readDesignacionesLocal();
+    if (!cloudData) return; // Si falla la red o sin conexión, mantiene datos locales
 
     if (Array.isArray(cloudData.designaciones)) {
-      const mergedList = mergeDesignaciones(localList, cloudData.designaciones);
-      if (JSON.stringify(mergedList) !== JSON.stringify(localList)) {
-        saveDesignacionesLocal(mergedList);
+      const localList = readDesignacionesLocal();
+      if (JSON.stringify(cloudData.designaciones) !== JSON.stringify(localList)) {
+        saveDesignacionesLocal(cloudData.designaciones);
       }
     }
 
-    if (Array.isArray(cloudData.customArbitros) && cloudData.customArbitros.length > 0) {
+    if (Array.isArray(cloudData.customArbitros)) {
       setCustomArbitros(prev => {
-        // Bug #2 fix: normalizar a mayúsculas antes de deduplicar (Set es case-sensitive)
-        const normalizedPrev = prev.map(n => n?.trim().toUpperCase()).filter(Boolean);
-        const normalizedCloud = cloudData.customArbitros.map(n => n?.trim().toUpperCase()).filter(Boolean);
-        const union = Array.from(new Set([...normalizedPrev, ...normalizedCloud]));
-        try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(union)); } catch (e) {}
-        return union;
+        if (JSON.stringify(prev) !== JSON.stringify(cloudData.customArbitros)) {
+          try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(cloudData.customArbitros)); } catch (e) {}
+          return cloudData.customArbitros;
+        }
+        return prev;
       });
     }
 
     if (cloudData.disponibilidades && typeof cloudData.disponibilidades === 'object') {
       setDisponibilidades(prev => {
-        // Bug #3 fix: deep merge por árbitro usando updatedAt para no perder cambios locales
-        const result = { ...prev };
-        Object.entries(cloudData.disponibilidades).forEach(([fecha, arbitros]) => {
-          if (!result[fecha]) {
-            result[fecha] = arbitros;
-          } else {
-            const mergedFecha = { ...result[fecha] };
-            Object.entries(arbitros || {}).forEach(([arbitro, data]) => {
-              const existing = mergedFecha[arbitro];
-              if (!existing || (data.updatedAt && (!existing.updatedAt || data.updatedAt > existing.updatedAt))) {
-                mergedFecha[arbitro] = data;
-              }
-            });
-            result[fecha] = mergedFecha;
-          }
-        });
-        try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(result)); } catch (e) {}
-        return result;
+        if (JSON.stringify(prev) !== JSON.stringify(cloudData.disponibilidades)) {
+          try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(cloudData.disponibilidades)); } catch (e) {}
+          return cloudData.disponibilidades;
+        }
+        return prev;
       });
     }
 
     if (cloudData.pagosState && typeof cloudData.pagosState === 'object') {
       setPagosState(prev => {
-        const merged = { ...prev, ...cloudData.pagosState };
-        try { localStorage.setItem('coarc_pagos_state', JSON.stringify(merged)); } catch (e) {}
-        return merged;
+        if (JSON.stringify(prev) !== JSON.stringify(cloudData.pagosState)) {
+          try { localStorage.setItem('coarc_pagos_state', JSON.stringify(cloudData.pagosState)); } catch (e) {}
+          return cloudData.pagosState;
+        }
+        return prev;
       });
     }
   };
@@ -236,7 +159,7 @@ export const DesignacionesProvider = ({ children }) => {
   };
 
   // ────────────────────────────────────────────────────────────────────
-  // Carga inicial, polling y sincronización en tiempo real entre pestañas
+  // Carga inicial, polling (cada 5s) y sync al enfocar ventana
   // ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchArbitros();
@@ -245,44 +168,38 @@ export const DesignacionesProvider = ({ children }) => {
       const cloudData = await cloudSyncService.fetchCloudData();
       const localList = readDesignacionesLocal();
 
-      if (cloudData !== null) {
-        const cloudList = Array.isArray(cloudData.designaciones) ? cloudData.designaciones : [];
-        const merged = mergeDesignaciones(localList, cloudList);
-
-        saveDesignacionesLocal(merged);
-
-        // Bug #4 fix: detectar cambios por contenido, no solo por cantidad.
-        // Si se editó un árbitro o estado de un partido existente, el count es igual → antes no subía.
-        const cloudMap = new Map(cloudList.map(d => [String(d.id), d]));
-        const hasNew = merged.some(d => !cloudMap.has(String(d.id)));
-        const hasModified = merged.some(d => {
-          const cloudItem = cloudMap.get(String(d.id));
-          return cloudItem && (d.updatedAt || 0) > (cloudItem.updatedAt || 0);
-        });
-        if (hasNew || hasModified) {
-          console.log(`[CloudSync] Subiendo ${merged.length} partidos (cambios detectados) a la nube...`);
-          cloudSyncService.pushCloudData({
-            designaciones: merged,
-            customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
-            disponibilidades: JSON.parse(localStorage.getItem('coarc_disponibilidades') || '{}'),
-            pagosState: JSON.parse(localStorage.getItem('coarc_pagos_state') || '{}')
-          });
+      if (cloudData !== null && Array.isArray(cloudData.designaciones)) {
+        // Si la nube tiene partidos o si ambos están vacíos, adoptar la nube
+        if (cloudData.designaciones.length > 0 || localList.length === 0) {
+          saveDesignacionesLocal(cloudData.designaciones);
+          if (Array.isArray(cloudData.customArbitros)) {
+            setCustomArbitros(cloudData.customArbitros);
+            try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(cloudData.customArbitros)); } catch (e) {}
+          }
+          if (cloudData.disponibilidades) {
+            setDisponibilidades(cloudData.disponibilidades);
+            try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(cloudData.disponibilidades)); } catch (e) {}
+          }
+          if (cloudData.pagosState) {
+            setPagosState(cloudData.pagosState);
+            try { localStorage.setItem('coarc_pagos_state', JSON.stringify(cloudData.pagosState)); } catch (e) {}
+          }
+        } else if (localList.length > 0 && cloudData.designaciones.length === 0) {
+          // Si local tiene partidos y la nube recién creada está vacía, subir local a la nube
+          pushToCloud(localList);
         }
-      } else {
-        console.warn('[CloudSync] No se pudo conectar a la nube en el inicio. Conservando datos locales.');
       }
     };
 
     initialSync();
 
-    // Polling recurrente cada 6 segundos
-    const intervalId = setInterval(pullFromCloud, 6000);
+    // Polling constante cada 5 segundos para sincronización entre dispositivos
+    const intervalId = setInterval(pullFromCloud, 5000);
 
-    // Al enfocar ventana/pestaña
+    // Sincronizar inmediatamente cuando el usuario abre o vuelve a enfocar la app (pantalla/pestaña)
     const handleFocus = () => pullFromCloud();
     window.addEventListener('focus', handleFocus);
 
-    // Sincronización instantánea entre pestañas/ventanas del mismo navegador
     const handleStorage = (e) => {
       if (e.key === 'coarc_saved_designaciones') {
         try {
@@ -300,7 +217,6 @@ export const DesignacionesProvider = ({ children }) => {
     };
   }, []);
 
-  // Stats del backend (opcional, no crítico)
   useEffect(() => {
     const fetchStats = async () => {
       setLoading(true);
@@ -314,14 +230,14 @@ export const DesignacionesProvider = ({ children }) => {
   }, [selectedDateIso]);
 
   // ────────────────────────────────────────────────────────────────────
-  // CRUD de Designaciones
+  // CRUD de Designaciones (Actualiza local e interactúa en vivo con la Nube)
   // ────────────────────────────────────────────────────────────────────
   const addDesignacion = (data) => {
-    const current = readDesignacionesLocal(); // Leer SIEMPRE del storage (más fresco que estado React)
+    const current = readDesignacionesLocal();
     const newDes = { ...data, id: Date.now(), item: current.length + 1, updatedAt: Date.now() };
     const updated = [...current, newDes];
     saveDesignacionesLocal(updated);
-    pushToCloud(updated); // Subir la lista completa actualizada
+    pushToCloud(updated);
     designacionesService.createDesignacion(data).catch(() => {});
     return newDes;
   };
@@ -338,7 +254,6 @@ export const DesignacionesProvider = ({ children }) => {
   const deleteDesignacion = (id) => {
     const current = readDesignacionesLocal();
     const updated = current.filter(d => d.id !== id);
-    addDeletedId(id); // Registrar el ID eliminado para que el cloud sync no lo restaure
     saveDesignacionesLocal(updated);
     pushToCloud(updated);
     designacionesService.deleteDesignacion(id).catch(() => {});
@@ -352,7 +267,8 @@ export const DesignacionesProvider = ({ children }) => {
       ...original,
       id: Date.now() + Math.floor(Math.random() * 1000),
       categoria_torneo: `${original.categoria_torneo || original.torneo || ''} (Copia)`.trim(),
-      item: current.length + 1
+      item: current.length + 1,
+      updatedAt: Date.now()
     };
     const updated = [...current, copyData];
     saveDesignacionesLocal(updated);
@@ -371,7 +287,8 @@ export const DesignacionesProvider = ({ children }) => {
       fecha_iso: selectedDateIso,
       fecha_label: selectedDateLabel,
       item: current.length + idx + 1,
-      estado: item.estado || 'PROGRAMADO'
+      estado: item.estado || 'PROGRAMADO',
+      updatedAt: baseTime
     }));
     const updated = [...current, ...creados];
     saveDesignacionesLocal(updated);
@@ -390,7 +307,8 @@ export const DesignacionesProvider = ({ children }) => {
       id: baseTime + idx,
       fecha_iso: fechaDestinoIso,
       fecha_label: fechaDestinoLabel,
-      estado: 'PROGRAMADO'
+      estado: 'PROGRAMADO',
+      updatedAt: baseTime
     }));
     const updated = [...current, ...partidosClonados];
     saveDesignacionesLocal(updated);
@@ -408,8 +326,6 @@ export const DesignacionesProvider = ({ children }) => {
     setCustomArbitros(updated);
     try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(updated)); } catch (e) {}
 
-    // Bug #6 fix: siempre sincronizar árbitros a la nube sin guard de designaciones.
-    // El guard anti-vaciado ya vive dentro de cloudSyncService.pushCloudData.
     cloudSyncService.pushCloudData({
       designaciones: readDesignacionesLocal(),
       customArbitros: updated,
@@ -424,7 +340,6 @@ export const DesignacionesProvider = ({ children }) => {
     const updated = customArbitros.filter(n => n.toUpperCase() !== clean);
     setCustomArbitros(updated);
     try { localStorage.setItem('coarc_custom_arbitros', JSON.stringify(updated)); } catch (e) {}
-    // Bug #6 fix: siempre sincronizar
     cloudSyncService.pushCloudData({
       designaciones: readDesignacionesLocal(),
       customArbitros: updated,
@@ -442,7 +357,6 @@ export const DesignacionesProvider = ({ children }) => {
     const updated = { ...pagosState, [key]: !pagosState[key] };
     setPagosState(updated);
     try { localStorage.setItem('coarc_pagos_state', JSON.stringify(updated)); } catch (e) {}
-    // Bug #6 fix: siempre sincronizar pagos a la nube
     cloudSyncService.pushCloudData({
       designaciones: readDesignacionesLocal(),
       customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
@@ -457,7 +371,6 @@ export const DesignacionesProvider = ({ children }) => {
     const updated = { ...pagosState, [key]: isPaid };
     setPagosState(updated);
     try { localStorage.setItem('coarc_pagos_state', JSON.stringify(updated)); } catch (e) {}
-    // Bug #6 fix: siempre sincronizar pagos a la nube
     cloudSyncService.pushCloudData({
       designaciones: readDesignacionesLocal(),
       customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
@@ -480,7 +393,6 @@ export const DesignacionesProvider = ({ children }) => {
       };
       const newDisp = { ...prev, [fechaIso]: updatedFecha };
       try { localStorage.setItem('coarc_disponibilidades', JSON.stringify(newDisp)); } catch (e) {}
-      // Bug #6 fix: siempre sincronizar disponibilidades a la nube
       cloudSyncService.pushCloudData({
         designaciones: readDesignacionesLocal(),
         customArbitros: JSON.parse(localStorage.getItem('coarc_custom_arbitros') || '[]'),
@@ -491,7 +403,6 @@ export const DesignacionesProvider = ({ children }) => {
     });
   };
 
-  // Exportado para compatibilidad con componentes existentes (no hace push a nube, solo local)
   const fetchDesignaciones = async () => {
     await pullFromCloud();
     try {
@@ -501,7 +412,7 @@ export const DesignacionesProvider = ({ children }) => {
   };
 
   // ────────────────────────────────────────────────────────────────────
-  // Estadísticas de árbitros (calculadas localmente en tiempo real)
+  // Estadísticas de árbitros
   // ────────────────────────────────────────────────────────────────────
   const computedArbitroStats = useMemo(() => {
     const statsMap = new Map();
@@ -549,9 +460,6 @@ export const DesignacionesProvider = ({ children }) => {
     return Array.from(statsMap.values()).sort((a, b) => b.total_partidos - a.total_partidos);
   }, [designaciones, selectedDateIso, arbitroStats]);
 
-  // ────────────────────────────────────────────────────────────────────
-  // Provider
-  // ────────────────────────────────────────────────────────────────────
   return (
     <DesignacionesContext.Provider value={{
       selectedDateIso,

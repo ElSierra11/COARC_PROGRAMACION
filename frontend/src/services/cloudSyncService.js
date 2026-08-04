@@ -1,20 +1,26 @@
 import axios from 'axios';
 
-const CLOUD_OBJECT_ID = 'ff8081819f7e10ae019fbf2e9da95ed8';
-const CLOUD_ENDPOINT = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
+// Endpoint oficial en la nube para sincronización en tiempo real entre dispositivos (PC, Celular, etc.)
+const CLOUD_ENDPOINT = 'https://jsonblob.com/api/jsonBlob/019fcaa2-7a8e-727c-afdc-3516914faaa6';
 
-// Mutex simple: evita que dos push corran en paralelo y se pisen
+// Mutex simple: evita que dos push corran en paralelo
 let pushInProgress = false;
 
 export const cloudSyncService = {
 
   /**
    * Obtiene los datos de la nube.
-   * Retorna el objeto `data` o null si falla.
+   * Retorna el objeto `data` o null si falla la conexión.
    */
   fetchCloudData: async () => {
     try {
-      const response = await axios.get(CLOUD_ENDPOINT, { timeout: 8000 });
+      const response = await axios.get(CLOUD_ENDPOINT, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0'
+        },
+        timeout: 8000
+      });
       if (response.data && response.data.data) {
         return response.data.data;
       }
@@ -26,54 +32,47 @@ export const cloudSyncService = {
   },
 
   /**
-   * Hace push de la lista de designaciones a la nube con merge inteligente.
-   * NUNCA sobreescribe la nube con un array vacío si la nube ya tiene datos.
+   * Hace push del estado completo a la nube para sincronizar instantáneamente con otros dispositivos.
    *
    * @param {Object} localState - { designaciones, customArbitros, disponibilidades, pagosState }
    */
   pushCloudData: async (localState) => {
-    // Si ya hay un push en curso, ignorar este (evitar condición de carrera)
     if (pushInProgress) {
-      console.log('[CloudSync] Push ignorado (ya hay uno en curso)');
-      return null;
-    }
-
-    // Bug #1 fix: leer del localStorage directamente para tener el valor más fresco.
-    // El estado React pasado puede estar stale (vacío) en un dispositivo recién iniciado.
-    let localDesignaciones = localState?.designaciones || [];
-    if (localDesignaciones.length === 0) {
-      try {
-        const raw = localStorage.getItem('coarc_saved_designaciones');
-        localDesignaciones = raw ? JSON.parse(raw) : [];
-      } catch (e) {}
-    }
-    if (localDesignaciones.length === 0) {
-      console.log('[CloudSync] Push cancelado: lista local vacía, se protege la nube.');
+      console.log('[CloudSync] Push omitido (ya hay uno en curso)');
       return null;
     }
 
     pushInProgress = true;
     try {
-      const mergedPayload = {
-        designaciones: localDesignaciones,
-        customArbitros: localState?.customArbitros || [],
-        customMunicipios: localState?.customMunicipios || [],
-        disponibilidades: localState?.disponibilidades || {},
-        pagosState: localState?.pagosState || {},
+      const designaciones = Array.isArray(localState?.designaciones) ? localState.designaciones : [];
+      const customArbitros = Array.isArray(localState?.customArbitros) ? localState.customArbitros : [];
+      const customMunicipios = Array.isArray(localState?.customMunicipios) ? localState.customMunicipios : [];
+      const disponibilidades = localState?.disponibilidades || {};
+      const pagosState = localState?.pagosState || {};
+
+      const payload = {
+        name: 'COARC_GLOBAL_DATABASE_2026',
+        data: {
+          designaciones,
+          customArbitros,
+          customMunicipios,
+          disponibilidades,
+          pagosState
+        },
         updatedAt: new Date().toISOString()
       };
 
-      // Subir a la nube directamente (Reemplazo atómico limpio)
-      await axios.put(CLOUD_ENDPOINT, {
-        name: 'COARC_GLOBAL_DATABASE_2026_V1',
-        data: mergedPayload
-      }, {
-        headers: { 'Content-Type': 'application/json' },
+      // Subir a la nube mediante PUT atómico
+      await axios.put(CLOUD_ENDPOINT, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         timeout: 10000
       });
 
-      console.log(`[CloudSync] ✅ Push exitoso: ${localDesignaciones.length} partidos en la nube`);
-      return mergedPayload;
+      console.log(`[CloudSync] ✅ Push exitoso: ${designaciones.length} partidos sincronizados a la nube`);
+      return payload.data;
 
     } catch (error) {
       console.warn('[CloudSync] pushCloudData falló:', error?.message);
