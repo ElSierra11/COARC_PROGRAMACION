@@ -70,18 +70,25 @@ export const parseExcelFile = (file) => {
           const isEmpty = [hora, cancha, partido].every(v => v === '' || v === '-');
           if (isEmpty) continue;
 
+          const cleanA1 = (a1 === '-' || a1 === 'N/A' || a1 === 'NONE') ? '' : a1;
+          const cleanA2 = (a2 === '-' || a2 === 'N/A' || a2 === 'NONE') ? '' : a2;
+          const cleanEm = (emergente === '-' || emergente === 'N/A' || emergente === 'NONE') ? '' : emergente;
+          const isCuadra = Boolean(cleanA1 || cleanA2 || cleanEm);
+
           results.push({
             id_temp: results.length + 1,
             hora,
             cancha,
             torneo,
+            categoria: torneo,
             categoria_torneo: torneo,
             partido,
             municipio,
-            arbitro_principal: principal === '-' ? '' : principal,
-            asistente_1: a1 === '-' ? '' : a1,
-            asistente_2: a2 === '-' ? '' : a2,
-            emergente: emergente === '-' ? '' : emergente,
+            es_cuadra: isCuadra,
+            arbitro_principal: (principal === '-' || principal === 'N/A') ? '' : principal,
+            asistente_1: cleanA1,
+            asistente_2: cleanA2,
+            emergente: cleanEm,
             observaciones: '',
             estado: estado || 'PROGRAMADO'
           });

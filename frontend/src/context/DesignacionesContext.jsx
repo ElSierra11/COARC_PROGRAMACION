@@ -243,19 +243,47 @@ export const DesignacionesProvider = ({ children }) => {
     if (!Array.isArray(listaNuevos) || listaNuevos.length === 0) return;
     const current = readDesignacionesLocal();
     const baseTime = Date.now();
-    const creados = listaNuevos.map((item, idx) => ({
-      ...item,
-      id: baseTime + idx,
-      fecha_iso: selectedDateIso,
-      fecha_label: selectedDateLabel,
-      item: current.length + idx + 1,
-      estado: item.estado || 'PROGRAMADO',
-      updatedAt: baseTime
-    }));
+    const creados = listaNuevos.map((item, idx) => {
+      const a1 = String(item.asistente_1 || '').trim();
+      const a2 = String(item.asistente_2 || '').trim();
+      const em = String(item.emergente || '').trim();
+      const isCuadra = Boolean(a1 || a2 || em || item.es_cuadra);
+
+      return {
+        ...item,
+        id: baseTime + idx,
+        fecha: selectedDateLabel,
+        fecha_iso: selectedDateIso,
+        fecha_label: selectedDateLabel,
+        categoria: item.categoria || item.categoria_torneo || item.torneo || 'LIBRE',
+        categoria_torneo: item.categoria_torneo || item.torneo || 'LIBRE',
+        es_cuadra: isCuadra,
+        arbitro_principal: (item.arbitro_principal || 'SIN ASIGNAR').trim().toUpperCase(),
+        asistente_1: a1.toUpperCase(),
+        asistente_2: a2.toUpperCase(),
+        emergente: em.toUpperCase(),
+        item: current.length + idx + 1,
+        estado: item.estado || 'PROGRAMADO',
+        updatedAt: baseTime
+      };
+    });
+
     const updated = [...current, ...creados];
     saveDesignacionesLocal(updated);
     pushToCloud(updated);
-    creados.forEach(d => designacionesService.createDesignacion(d).catch(() => {}));
+
+    creados.forEach(d => {
+      // Auto-registrar árbitros de la terna
+      if (d.arbitro_principal && d.arbitro_principal !== 'SIN ASIGNAR') autoRegisterArbitro(d.arbitro_principal);
+      if (d.asistente_1) autoRegisterArbitro(d.asistente_1);
+      if (d.asistente_2) autoRegisterArbitro(d.asistente_2);
+      if (d.emergente) autoRegisterArbitro(d.emergente);
+
+      designacionesService.createDesignacion(d).catch(err => {
+        console.error('Error al persistir partido importado en backend:', err);
+      });
+    });
+
     return creados;
   };
 
@@ -267,8 +295,10 @@ export const DesignacionesProvider = ({ children }) => {
     const partidosClonados = partidosOrigen.map((p, idx) => ({
       ...p,
       id: baseTime + idx,
+      fecha: fechaDestinoLabel,
       fecha_iso: fechaDestinoIso,
       fecha_label: fechaDestinoLabel,
+      categoria: p.categoria || p.categoria_torneo || p.torneo || 'LIBRE',
       estado: 'PROGRAMADO',
       updatedAt: baseTime
     }));
