@@ -14,6 +14,7 @@ import { AdminPanelModal } from './components/AdminPanelModal';
 import { PresupuestoModal } from './components/PresupuestoModal';
 import { CalendarioModal } from './components/CalendarioModal';
 import { ImportarClonarModal } from './components/ImportarClonarModal';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { Shield, RefreshCw, Plus, Calendar, Activity, Share2, Printer, Lock, LogOut, DollarSign, FileSpreadsheet } from 'lucide-react';
 
 class ErrorBoundary extends Component {
@@ -236,6 +237,9 @@ function AppContent() {
 
       {/* Printable Sheet (Rendered on Ctrl+P) */}
       <OfficialCoarcPrintSheet />
+
+      {/* PWA Installation & Prompt Banner */}
+      <PWAInstallBanner />
 
     </div>
   );

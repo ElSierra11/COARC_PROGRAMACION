@@ -8,8 +8,17 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
-      includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png', 'pwa-icon.png'],
+      includeAssets: [
+        'favicon.ico',
+        'apple-touch-icon.png',
+        'pwa-192x192.png',
+        'pwa-512x512.png',
+        'maskable-icon-512x512.png'
+      ],
       manifest: {
+        id: '/',
+        scope: '/',
+        start_url: '/',
         name: 'Corporación Arbitral de Córdoba - COARC',
         short_name: 'COARC App',
         description: 'Sistema Oficial de Designaciones Arbitrales de Fútbol - COARC',
@@ -17,24 +26,38 @@ export default defineConfig({
         background_color: '#0A1128',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        categories: ['sports', 'productivity', 'utilities'],
         icons: [
           {
-            src: '/pwa-icon.png',
+            src: '/pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: '/pwa-icon.png',
+            src: '/pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'
           },
           {
-            src: '/favicon.ico',
-            sizes: '64x64 32x32 24x24 16x16',
-            type: 'image/x-icon'
+            src: '/maskable-icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
+          },
+          {
+            src: '/apple-touch-icon.png',
+            sizes: '180x180',
+            type: 'image/png'
+          }
+        ],
+        shortcuts: [
+          {
+            name: 'Designaciones',
+            short_name: 'Partidos',
+            description: 'Ver lista de designaciones arbitrales',
+            url: '/'
           }
         ]
       },
@@ -50,6 +73,20 @@ export default defineConfig({
               cacheName: 'google-fonts-cache',
               expiration: {
                 maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-webfonts',
+              expiration: {
+                maxEntries: 30,
                 maxAgeSeconds: 60 * 60 * 24 * 365
               },
               cacheableResponse: {
@@ -81,3 +118,4 @@ export default defineConfig({
     host: true
   }
 })
+
